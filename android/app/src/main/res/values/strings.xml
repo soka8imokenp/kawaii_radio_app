@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kawaii Radio</string>
+    <string name="title_activity_main">Kawaii Radio</string>
+    <string name="package_name">uz.kawaii.radio.kr01</string>
+    <string name="custom_url_scheme">uz.kawaii.radio.kr01</string>
+</resources>
