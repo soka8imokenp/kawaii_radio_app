@@ -1,0 +1,41 @@
+name: Diagnose launch on emulator
+
+# Push to the `diag` branch: installs the latest released APK on an Android emulator,
+# launches it and prints the crash log (logcat) into the job output.
+on:
+  push:
+    branches: [diag]
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [34]
+    steps:
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Download latest APK
+        run: curl -sL -o app.apk https://github.com/${{ github.repository }}/releases/latest/download/kawaii-radio.apk && ls -la app.apk
+
+      - name: Run on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            adb install -r app.apk
+            adb logcat -c
+            adb shell monkey -p uz.kawaii.radio.kr01 -c android.intent.category.LAUNCHER 1
+            sleep 20
+            echo "===== PROCESS ====="; adb shell pidof uz.kawaii.radio.kr01 || echo "NOT RUNNING"
+            echo "===== CRASH ====="; adb logcat -d -b crash || true
+            echo "===== APP LOG ====="; adb logcat -d | grep -E "AndroidRuntime|FATAL|Capacitor|chromium|uz.kawaii|System.err" | tail -150 || true
