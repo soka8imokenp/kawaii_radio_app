@@ -65,6 +65,11 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameNanos
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -97,6 +102,7 @@ import uz.kawaii.radio.data.LyricLine
 import uz.kawaii.radio.data.Track
 import uz.kawaii.radio.data.lineAt
 import uz.kawaii.radio.data.parseLrc
+import uz.kawaii.radio.data.AutoLyrics
 import uz.kawaii.radio.ui.LocalStore
 import uz.kawaii.radio.ui.kit.LocalSound
 import uz.kawaii.radio.ui.kit.Logo
@@ -112,6 +118,33 @@ import kotlin.math.abs
 
 private val TABS = listOf(Tab.JPOP to "J-Pop", Tab.OST to "Anime OST", Tab.SAVED to "Saqlangan")
 private const val NO_LYRICS = "Bu qo'shiq uchun matn hali yo'q"
+
+/** Lyrics of a song: its own (Uzbek translation / romaji), or synced ones found automatically. */
+class SongLyrics(val uzbek: String?, val original: String?, val auto: Boolean, val note: String) {
+    fun source(lang: Lang): String = when {
+        lang == Lang.JP && original != null -> original
+        !uzbek.isNullOrBlank() -> uzbek
+        else -> original ?: ""
+    }
+    val hasBoth get() = !uzbek.isNullOrBlank() && original != null
+}
+
+@Composable
+fun rememberSongLyrics(t: Track): SongLyrics {
+    val store = LocalStore.current
+    val own = t.lyrics
+    if (own != null) return remember(t.id, own) { SongLyrics(own.uzbek, own.romaji, false, NO_LYRICS) }
+    val found by produceState<AutoLyrics?>(null, t.id) { value = store.autoLyrics(t) ?: AutoLyrics(at = -1) }
+    val f = found
+    return remember(t.id, f) {
+        when {
+            f == null -> SongLyrics(null, null, true, "Matn qidirilmoqda…")
+            f.synced != null -> SongLyrics(null, f.synced, true, NO_LYRICS)
+            f.instrumental -> SongLyrics(null, null, true, "♪ So'zsiz musiqa")
+            else -> SongLyrics(null, null, true, NO_LYRICS)
+        }
+    }
+}
 private val PanelShape = RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp)
 
 @Composable
@@ -156,27 +189,65 @@ fun TopPanel(
     }
 }
 
-/** Ambient light from the current cover: a tiny pre-blurred copy, scaled up and faded at the edges. */
+/**
+ * Ambient light from the current cover, alive: three soft colour clouds taken from the cover
+ * drift and breathe behind the cover flow. They slow almost to a halt while paused.
+ */
 @Composable
 private fun BoxScope.AmbientGlow(cover: String, playing: Boolean) {
     val platform = LocalStore.current.platform
-    val bmp by produceState<ImageBitmap?>(null, cover) { value = platform.glowBitmap(cover) }
-    val alpha by animateFloatAsState(if (playing) 0.55f else 0.32f, tween(800))
-    val saturate = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(1.6f) }) }
-    // the web version blurred a 280px disc by 48px: light reaches ~188px from the centre (220px down)
-    Box(Modifier.matchParentSize()) {
-        Crossfade(bmp, Modifier.align(Alignment.TopCenter).offset(y = 32.dp), animationSpec = tween(800)) { b ->
-            if (b != null) Canvas(
-                Modifier.size(376.dp).graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen; this.alpha = alpha },
-            ) {
-                drawImage(b, dstSize = IntSize(size.width.toInt(), size.height.toInt()), filterQuality = FilterQuality.High, colorFilter = saturate)
-                drawRect(
-                    Brush.radialGradient(0f to Color.Black, 0.49f to Color.Black, 1f to Color.Transparent),
-                    blendMode = BlendMode.DstIn,
-                )
-            }
+    val palette by produceState(emptyList<Color>(), cover) { value = platform.glowBitmap(cover)?.let(::coverColors) ?: emptyList() }
+    val c0 by animateColorAsState(palette.getOrElse(0) { Color.Transparent }, tween(900))
+    val c1 by animateColorAsState(palette.getOrElse(1) { Color.Transparent }, tween(900))
+    val c2 by animateColorAsState(palette.getOrElse(2) { Color.Transparent }, tween(900))
+    val alpha by animateFloatAsState(if (playing) 0.38f else 0.22f, tween(800))
+    // a clock that runs at full speed while playing and creeps while paused
+    val speed by animateFloatAsState(if (playing) 1f else 0.12f, tween(1200))
+    val time = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var last = withFrameNanos { it }
+        while (true) withFrameNanos { now ->
+            time.floatValue += (now - last) / 1e9f * speed
+            last = now
         }
     }
+    Canvas(
+        Modifier.matchParentSize().graphicsLayer { this.alpha = alpha },
+    ) {
+        val t = time.floatValue
+        val cx = size.width / 2
+        val cy = 220.dp.toPx()
+        val r = 150.dp.toPx()
+        val drift = 70.dp.toPx()
+        val blobs = listOf(
+            Triple(c0, Offset(cx + sin(t * 0.31f) * drift, cy + cos(t * 0.23f) * drift * 0.6f), 1f + 0.12f * sin(t * 0.47f)),
+            Triple(c1, Offset(cx + cos(t * 0.19f + 2f) * drift * 1.2f, cy + sin(t * 0.27f + 1f) * drift * 0.8f), 0.9f + 0.14f * sin(t * 0.39f + 1f)),
+            Triple(c2, Offset(cx + sin(t * 0.17f + 4f) * drift, cy + cos(t * 0.33f + 3f) * drift), 0.8f + 0.12f * cos(t * 0.43f)),
+        )
+        for ((c, at, k) in blobs) {
+            if (c.alpha == 0f) continue
+            val rad = r * k
+            drawCircle(Brush.radialGradient(listOf(c, c.copy(alpha = 0f)), center = at, radius = rad), rad, at)
+        }
+    }
+}
+
+/** Three colours of a (small, blurred) cover: the averages of its top-left, top-right and bottom, a bit more vivid. */
+private fun coverColors(b: ImageBitmap): List<Color> {
+    val px = b.toPixelMap()
+    fun avg(x0: Int, y0: Int, x1: Int, y1: Int): Color {
+        var r = 0f; var g = 0f; var bl = 0f; var n = 0
+        for (y in y0 until y1) for (x in x0 until x1) { val c = px[x, y]; r += c.red; g += c.green; bl += c.blue; n++ }
+        if (n == 0) return Color.Transparent
+        r /= n; g /= n; bl /= n
+        // push away from grey so the light reads as colour, not haze
+        val m = (r + g + bl) / 3f
+        fun v(x: Float) = (m + (x - m) * 1.5f).coerceIn(0f, 1f)
+        return Color(v(r), v(g), v(bl))
+    }
+    val w = px.width
+    val h = px.height
+    return listOf(avg(0, 0, w / 2, h / 2), avg(w / 2, 0, w, h / 2), avg(0, h / 2, w, h))
 }
 
 @Composable
@@ -423,9 +494,10 @@ private fun NowCard(t: Track, playing: Boolean, drawer: Drawer, clock: State<Dou
     val store = LocalStore.current
     val sound = LocalSound.current
     val lang by store.lang.collectAsState()
-    val src = t.lyrics?.let { if (lang == Lang.JP && it.romaji != null) it.romaji else it.uzbek } ?: ""
+    val song = rememberSongLyrics(t)
+    val src = song.source(lang)
     val lines = remember(src) { if (src.isEmpty()) emptyList() else parseLrc(src) }
-    val canJp = t.lyrics?.romaji != null
+    val canJp = song.hasBoth
     Column(
         Modifier.fillMaxWidth().zIndex(2f)
             .darkWell(RoundedCornerShape(16.dp), color = K.card)
@@ -440,7 +512,13 @@ private fun NowCard(t: Track, playing: Boolean, drawer: Drawer, clock: State<Dou
             }
             if (lines.isNotEmpty()) {
                 BasicText(
-                    (if (lang == Lang.JP && canJp) "日本" else "O'ZB") + if (canJp) " ⇄" else "",
+                    when {
+                        song.auto -> "ORIGINAL"
+                        lang == Lang.JP && canJp -> "日本 ⇄"
+                        canJp -> "O'ZB ⇄"
+                        song.uzbek.isNullOrBlank() -> "日本"
+                        else -> "O'ZB"
+                    },
                     Modifier.tap(enabled = canJp, onClick = { sound.press(); store.setLang(if (lang == Lang.JP) Lang.UZ else Lang.JP) })
                         .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                     style = T.dot(11.sp, K.dimText2),
@@ -462,7 +540,7 @@ private fun NowCard(t: Track, playing: Boolean, drawer: Drawer, clock: State<Dou
                 drawer.open,
                 transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) },
             ) { open ->
-                if (open) FullLyrics(lines, clock) else Box(Modifier.fillMaxWidth().height(70.dp)) { LyricLines(lines, clock, lang) }
+                if (open) FullLyrics(lines, clock, song.note) else Box(Modifier.fillMaxWidth().height(70.dp)) { LyricLines(lines, clock, lang, song.note) }
             }
         }
     }
@@ -470,35 +548,37 @@ private fun NowCard(t: Track, playing: Boolean, drawer: Drawer, clock: State<Dou
 
 /** Two-line karaoke readout of the collapsed panel. */
 @Composable
-private fun LyricLines(lines: List<LyricLine>, clock: State<Double>, lang: Lang) {
+private fun LyricLines(lines: List<LyricLine>, clock: State<Double>, lang: Lang, note: String) {
     if (lines.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) { BasicText(NO_LYRICS, style = T.dot(14.sp, K.lyricDim)) }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) { BasicText(note, style = T.dot(14.sp, K.lyricDim)) }
         return
     }
     val li by remember(lines) { derivedStateOf { lineAt(lines, clock.value) } }
     val glow = lyricGlow()
+    // the animation keeps the texts themselves: an outgoing line must not index into the next song's lyrics
+    val cur = lines.getOrNull(li)?.text?.ifEmpty { "♪ ♪ ♪" } ?: "♪ · · ·"
+    val next = lines.getOrNull(li + 1)?.text ?: ""
     AnimatedContent(
-        lang to li,
+        Triple(lang, li, cur to next),
         transitionSpec = {
             (fadeIn(tween(200, 200)) + slideInVertically(tween(200, 200)) { it / 7 }) togetherWith
                 (fadeOut(tween(200)) + slideOutVertically(tween(200)) { -it / 7 })
         },
-    ) { (_, i) ->
+    ) { (_, _, texts) ->
         Column(Modifier.fillMaxWidth()) {
-            val cur = if (i >= 0) lines[i].text.ifEmpty { "♪ ♪ ♪" } else "♪ · · ·"
-            BasicText(cur, style = T.dot(17.sp, K.lyric, lh = 24.sp).copy(shadow = glow), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            BasicText(lines.getOrNull(i + 1)?.text ?: "", style = T.dot(13.sp, K.lyricDim, lh = 22.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            BasicText(texts.first, style = T.dot(17.sp, K.lyric, lh = 24.sp).copy(shadow = glow), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            BasicText(texts.second, style = T.dot(13.sp, K.lyricDim, lh = 22.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 /** Whole song in the pulled-down panel; the current line stays centred and lit. */
 @Composable
-private fun FullLyrics(lines: List<LyricLine>, clock: State<Double>) {
+private fun FullLyrics(lines: List<LyricLine>, clock: State<Double>, note: String) {
     val store = LocalStore.current
     if (lines.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            BasicText(NO_LYRICS, style = T.dot(15.sp, K.lyricDim).copy(textAlign = TextAlign.Center))
+            BasicText(note, style = T.dot(15.sp, K.lyricDim).copy(textAlign = TextAlign.Center))
         }
         return
     }

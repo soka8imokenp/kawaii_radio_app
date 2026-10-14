@@ -2,4 +2,6 @@
 <paths>
     <!-- downloaded update APKs live in cache/updates -->
     <cache-path name="updates" path="updates/" />
+    <!-- pictures shared from the app (Kawaii Wrapped) -->
+    <cache-path name="share" path="share/" />
 </paths>

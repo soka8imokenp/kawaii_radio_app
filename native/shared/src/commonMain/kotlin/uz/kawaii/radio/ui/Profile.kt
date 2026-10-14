@@ -198,6 +198,7 @@ fun Profile(ui: UiState) {
                 }
             }
         }
+        PixelKey("Kawaii Wrapped · oy xulosasi", Modifier.padding(top = 12.dp).fillMaxWidth(), glyph = Glyph.STAR, glyphSize = 15.dp, height = 46.dp) { ui.wrapped = true }
         if (!store.premium) GoldButton("KAWAII PASS OLISH", Modifier.padding(top = 12.dp), 16, 14) { ui.premium = true }
 
         if (top.isNotEmpty()) {
@@ -242,6 +243,12 @@ fun Profile(ui: UiState) {
         Column(Modifier.fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(horizontal = 16.dp)) {
             SettingRow("Mavzu", "Yorug', tungi yoki telefonga qarab") {
                 Switch3(theme.ordinal, listOf("AVTO", "KUN", "TUN")) { store.setTheme(ThemeMode.entries[it]) }
+            }
+            GrooveH()
+            val cross by store.crossfade.collectAsState()
+            val steps = listOf(0, 3, 6, 10)
+            SettingRow("Silliq o'tish", if (cross == 0) "Qo'shiqlar orasida tanaffus" else "Qo'shiqlar $cross soniyada bir-biriga o'tadi") {
+                Switch3(steps.indexOf(cross).coerceAtLeast(0), listOf("YO'Q", "3S", "6S", "10S")) { store.setCrossfade(steps[it]) }
             }
             GrooveH()
             SettingRow("Qo'shiq matni", "Matnli qo'shiqlar uchun til") {
@@ -326,7 +333,7 @@ private fun SmallKey(onClick: () -> Unit, sound: Boolean = true, content: @Compo
 private fun Switch3(selected: Int, labels: List<String>, onChange: (Int) -> Unit) {
     val sound = LocalSound.current
     val pos by animateFloatAsState(selected.toFloat(), motionSpring(600f, 34f))
-    BoxWithConstraints(Modifier.width((labels.size * 52).dp).tray(RoundedCornerShape(14.dp)).padding(4.dp)) {
+    BoxWithConstraints(Modifier.width((labels.size * if (labels.size > 3) 46 else 52).dp).tray(RoundedCornerShape(14.dp)).padding(4.dp)) {
         val cell = maxWidth / labels.size
         Box(Modifier.matchParentSize()) {
             Box(Modifier.offset { IntOffset((cell.toPx() * pos).toInt(), 0) }.width(cell).fillMaxHeight().raised(RoundedCornerShape(10.dp)))

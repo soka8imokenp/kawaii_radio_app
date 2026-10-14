@@ -43,6 +43,9 @@ interface Platform {
     fun offlineUri(trackId: String): String?
 
     fun openUrl(url: String)
+
+    /** Shares a picture (Telegram, gallery…) through the system share sheet. */
+    fun shareImage(image: ImageBitmap, text: String)
 }
 
 interface KeyValueStore {
@@ -96,6 +99,8 @@ interface AudioEngine {
     fun insertNext(item: QueueItem)
     /** 0..1, used by the sleep timer to fade out. */
     fun setVolume(v: Float)
+    /** Blend the end of each song into the next one; 0 turns it off. */
+    fun setCrossfade(seconds: Int)
 }
 
 sealed interface InstallResult {

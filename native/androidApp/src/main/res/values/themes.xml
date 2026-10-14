@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kawaii Radio</string>
+    <string name="widget_desc">Radio: qo\'shiq, ijro va keyingisi</string>
 
     <style name="Theme.Kawaii" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>

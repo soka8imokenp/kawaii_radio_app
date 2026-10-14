@@ -63,18 +63,7 @@ class Media3Engine(context: Context) : AudioEngine {
 
     override fun positionMs(): Long = controller?.currentPosition ?: 0
 
-    private fun item(q: QueueItem): MediaItem = MediaItem.Builder()
-        .setMediaId(q.id)
-        .setUri(q.uri)
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(q.title)
-                .setArtist(q.artist)
-                .setAlbumTitle("Kawaii Radio")
-                .apply { if (q.artworkUri.isNotEmpty()) setArtworkUri(Uri.parse(q.artworkUri)) }
-                .build(),
-        )
-        .build()
+    private fun item(q: QueueItem): MediaItem = q.toMediaItem()
 
     override fun setQueue(items: List<QueueItem>, startIndex: Int) = run { c ->
         c.setMediaItems(items.map(::item), startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0)), 0)
@@ -149,5 +138,22 @@ class Media3Engine(context: Context) : AudioEngine {
         publish()
     }
 
-    override fun setVolume(v: Float) = run { it.volume = v.coerceIn(0f, 1f) }
+    // the service applies it together with the crossfade curves
+    override fun setVolume(v: Float) { PlaybackTuning.master = v.coerceIn(0f, 1f) }
+
+    override fun setCrossfade(seconds: Int) { PlaybackTuning.crossfadeMs = seconds.coerceAtLeast(0) * 1000L }
 }
+
+/** The player-side form of a queue entry (shared with the service's playback resumption). */
+fun QueueItem.toMediaItem(): MediaItem = MediaItem.Builder()
+    .setMediaId(id)
+    .setUri(uri)
+    .setMediaMetadata(
+        MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(artist)
+            .setAlbumTitle("Kawaii Radio")
+            .apply { if (artworkUri.isNotEmpty()) setArtworkUri(Uri.parse(artworkUri)) }
+            .build(),
+    )
+    .build()

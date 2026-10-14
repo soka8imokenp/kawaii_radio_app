@@ -94,6 +94,7 @@ fun WaveLcd(t: Track, playing: Boolean, durationMs: Long, clock: State<Double>) 
     val store = LocalStore.current
     val sound = LocalSound.current
     val lang by store.lang.collectAsState()
+    val song = rememberSongLyrics(t)
     val tuning by store.tuning.collectAsState()
     var peaks by remember(t.id) { mutableStateOf(placeholderPeaks(t.id, BARS)) }
     LaunchedEffect(t.id) {
@@ -166,8 +167,9 @@ fun WaveLcd(t: Track, playing: Boolean, durationMs: Long, clock: State<Double>) 
                     // lyric language: always on the panel, lit only when the song has that transcript
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         for (l in Lang.entries) {
-                            val available = if (l == Lang.UZ) t.lyrics != null else t.lyrics?.romaji != null
-                            val on = available && lang == l
+                            val available = if (l == Lang.UZ) !song.uzbek.isNullOrBlank() else song.original != null
+                            val shown = if (song.original != null && (lang == Lang.JP || song.uzbek.isNullOrBlank())) Lang.JP else Lang.UZ
+                            val on = available && shown == l
                             val label = (if (l == Lang.UZ) "UZ" else "JP") + if (on) " ●" else " ○"
                             val style = when {
                                 on -> T.pixel(15.sp, K.lcdInk, lh = 15.sp).copy(shadow = ls)

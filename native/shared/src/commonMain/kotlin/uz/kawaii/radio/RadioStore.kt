@@ -3,7 +3,9 @@
 package uz.kawaii.radio
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +19,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import uz.kawaii.radio.data.AutoLyrics
 import uz.kawaii.radio.data.CLOUD_URL
+import uz.kawaii.radio.data.lookupLyrics
+import uz.kawaii.radio.data.monthKey
 import uz.kawaii.radio.data.CloudPlaylist
 import uz.kawaii.radio.data.Track
 import uz.kawaii.radio.data.cachedCloud
@@ -49,10 +54,13 @@ private data class Saved(
     val saved: List<String> = emptyList(),
     val lang: String = "uz",
     val theme: String = "auto",
+    val crossfade: Int = 4,
     val queue: List<String> = emptyList(),
     val stats: Map<String, PlayStat> = emptyMap(),
     val recent: List<String> = emptyList(),
     val profile: Profile = Profile(),
+    /** "2026-10" → song id → seconds listened that month */
+    val months: Map<String, Map<String, Long>> = emptyMap(),
 )
 
 private const val STATE_KEY = "kr01-state"
@@ -91,8 +99,22 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     private val _theme = MutableStateFlow(ThemeMode.entries.firstOrNull { it.name.equals(saved0.theme, true) } ?: ThemeMode.AUTO)
     val theme: StateFlow<ThemeMode> = _theme.asStateFlow()
 
+    private val _crossfade = MutableStateFlow(saved0.crossfade)
+    /** Seconds of crossfade between songs, 0 = off. */
+    val crossfade: StateFlow<Int> = _crossfade.asStateFlow()
+
+    fun setCrossfade(seconds: Int) {
+        _crossfade.value = seconds
+        audio.setCrossfade(seconds)
+        persist()
+    }
+
     private val _stats = MutableStateFlow(saved0.stats)
     val stats: StateFlow<Map<String, PlayStat>> = _stats.asStateFlow()
+
+    private val _months = MutableStateFlow(saved0.months)
+    /** Listening per month, for "Kawaii Wrapped". */
+    val months: StateFlow<Map<String, Map<String, Long>>> = _months.asStateFlow()
 
     private val _recent = MutableStateFlow(saved0.recent)
     /** Recently played song ids, newest first. */
@@ -133,6 +155,7 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
         // every song lives in the cloud; the last playlist seen is kept so the app opens instantly (and offline)
         val all = cachedCloud(kv)
         _tracks.value = all
+        audio.setCrossfade(_crossfade.value)
         restoreQueue(all, saved0.queue, saved0.id)
         _ready.value = true
         refreshCatalog()
@@ -249,6 +272,16 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
         persist()
     }
 
+    private val lyricJobs = HashMap<String, Deferred<AutoLyrics?>>()
+
+    /** Automatic lyrics, looked up once per song and shared by every screen; a failed lookup is retried later. */
+    suspend fun autoLyrics(t: Track): AutoLyrics? {
+        val job = lyricJobs.getOrPut(t.id) { scope.async { lookupLyrics(platform, t) } }
+        val r = job.await()
+        if (r == null) lyricJobs.remove(t.id)
+        return r
+    }
+
     /** Keeps the song inside the app so it plays offline. */
     fun toggleSave(id: String) {
         val t = track(id) ?: return
@@ -301,6 +334,9 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
             val old = _stats.value[e.id] ?: PlayStat()
             val counted = if (sessionSeconds == PLAY_SECONDS) 1 else 0
             _stats.value = _stats.value + (e.id to old.copy(plays = old.plays + counted, seconds = old.seconds + 1, last = nowMs()))
+            val mk = monthKey(nowMs())
+            val month = _months.value[mk].orEmpty()
+            _months.value = _months.value + (mk to (month + (e.id to (month[e.id] ?: 0L) + 1)))
             if (++sinceSave >= 15 || counted == 1) { sinceSave = 0; persist() }
         }
     }
@@ -312,10 +348,12 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
             saved = _saved.value,
             lang = if (_lang.value == Lang.JP) "jp" else "uz",
             theme = _theme.value.name.lowercase(),
+            crossfade = _crossfade.value,
             queue = engine.value.queue,
             stats = _stats.value,
             recent = _recent.value,
             profile = _profile.value,
+            months = _months.value,
         )
         kv.set(STATE_KEY, json.encodeToString(Saved.serializer(), s))
     }

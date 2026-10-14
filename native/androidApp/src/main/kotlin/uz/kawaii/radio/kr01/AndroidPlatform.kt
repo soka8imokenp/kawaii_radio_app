@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.content.edit
 import androidx.core.graphics.scale
 import coil3.SingletonImageLoader
@@ -183,6 +184,22 @@ class AndroidPlatform(private val context: Context) : Platform {
     }
 
     override fun offlineUri(trackId: String): String? = offlineFile(trackId).takeIf { it.length() > 0 }?.let { Uri.fromFile(it).toString() }
+
+    override fun shareImage(image: ImageBitmap, text: String) {
+        val a = activity ?: return
+        runCatching {
+            val dir = File(context.cacheDir, "share").apply { mkdirs() }
+            val file = File(dir, "kawaii-wrapped.png")
+            file.outputStream().use { image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val send = Intent(Intent.ACTION_SEND)
+                .setType("image/png")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .putExtra(Intent.EXTRA_TEXT, text)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            a.startActivity(Intent.createChooser(send, "Ulashish"))
+        }
+    }
 
     override fun openUrl(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- widget: chalk housing -->
+    <color name="w_body_top">#FFEFF1F5</color>
+    <color name="w_body_bottom">#FFE3E5EA</color>
+    <color name="w_edge">#8CB8BDCB</color>
+    <color name="w_key_top">#FFFAFAFC</color>
+    <color name="w_key_bottom">#FFEFF1F5</color>
+    <color name="w_ink">#FF4B5563</color>
+    <color name="w_lcd_a">#FFCFD8AA</color>
+    <color name="w_lcd_b">#FFAAB68A</color>
+    <color name="w_lcd_edge">#FF3A4131</color>
+    <color name="w_lcd_ink">#FF262E1E</color>
+    <color name="w_lcd_dim">#99262E1E</color>
+</resources>

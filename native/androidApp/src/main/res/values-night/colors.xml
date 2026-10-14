@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- widget: graphite housing -->
+    <color name="w_body_top">#FF1F2125</color>
+    <color name="w_body_bottom">#FF15171A</color>
+    <color name="w_edge">#FF050607</color>
+    <color name="w_key_top">#FF2B2E34</color>
+    <color name="w_key_bottom">#FF1F2125</color>
+    <color name="w_ink">#FFD3D7DE</color>
+    <color name="w_lcd_a">#FFB9C68E</color>
+    <color name="w_lcd_b">#FF8B9866</color>
+    <color name="w_lcd_edge">#FF2B3124</color>
+    <color name="w_lcd_ink">#FF1E2517</color>
+    <color name="w_lcd_dim">#991E2517</color>
+</resources>

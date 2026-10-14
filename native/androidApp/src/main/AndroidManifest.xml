@@ -40,6 +40,18 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name=".widget.KawaiiWidget"
+            android:exported="false"
+            android:label="Kawaii Radio">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/kawaii_widget" />
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

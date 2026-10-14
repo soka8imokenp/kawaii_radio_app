@@ -25,6 +25,18 @@ fun formatWhen(ms: Long): String {
     }
 }
 
+/** "2026-10" for the month of [ms]. */
+fun monthKey(ms: Long): String {
+    val t = Instant.fromEpochMilliseconds(ms).toLocalDateTime(TimeZone.currentSystemDefault())
+    return "${t.year}-${two(t.month.ordinal + 1)}"
+}
+
+/** "OKTABR 2026" for a month key. */
+fun monthTitle(key: String): String {
+    val (y, m) = key.split('-').let { it[0] to (it.getOrNull(1)?.toIntOrNull() ?: 1) }
+    return "${MONTHS[(m - 1).coerceIn(0, 11)].uppercase()} $y"
+}
+
 /** Short date for list rows: "14-okt". */
 fun formatShortDate(ms: Long): String {
     if (ms <= 0) return ""
