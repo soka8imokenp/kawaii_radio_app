@@ -2,6 +2,10 @@ package uz.kawaii.radio.kr01
 
 import android.graphics.Color
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CompletableDeferred
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -18,6 +22,17 @@ class MainActivity : ComponentActivity() {
     private val photoPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { platform.onPhotoPicked(it) }
 
     fun pickPhoto() = photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+
+    private var storageWait: CompletableDeferred<Boolean>? = null
+    private val storagePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { storageWait?.complete(it) }
+
+    /** Android 9 and older only: writing to the Music folder needs the storage permission. */
+    suspend fun ensureStoragePermission(): Boolean {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) return true
+        val wait = CompletableDeferred<Boolean>().also { storageWait = it }
+        runOnUiThread { storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }
+        return wait.await()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // the system splash hands over at once: the Compose splash starts from the same frame

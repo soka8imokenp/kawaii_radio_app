@@ -52,6 +52,8 @@ fun Liked(onOpenRadio: () -> Unit) {
     val likes by store.likes.collectAsState()
     val stats by store.stats.collectAsState()
     val engine by store.engine.collectAsState()
+    val saved by store.saved.collectAsState()
+    val downloads by store.downloads.collectAsState()
     var sort by remember { mutableStateOf(Sort.NEW) }
 
     val byId = remember(tracks) { tracks.associateBy { it.id } }
@@ -68,7 +70,7 @@ fun Liked(onOpenRadio: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         PageHeader(
             "Sevimlilar",
-            if (list.isEmpty()) "Yoqtirgan qo'shiqlaringiz" else "${list.size} ta qo'shiq · ${formatListening(total.toLong())}",
+            if (list.isEmpty()) "Yoqtirgan qo'shiqlaringiz" else "${list.size} ta qo'shiq · ${formatListening(total.toLong())} · bosib turing: karta",
         ) { CountPlate(list.size, K.heart) }
 
         if (list.isEmpty()) {
@@ -99,6 +101,18 @@ fun Liked(onOpenRadio: () -> Unit) {
                         PixelKey("Tinglash", Modifier.weight(1f), glyph = Glyph.PLAY, glyphSize = 11.dp) { store.playAll(ids, shuffle = false) }
                         PixelKey("Aralash", Modifier.weight(1f), glyph = Glyph.SHUFFLE, glyphSize = 15.dp) { store.playAll(ids, shuffle = true) }
                     }
+                    // everything liked onto the phone, for listening without internet
+                    val left = ids.count { it !in saved }
+                    val busy = ids.count { it in downloads }
+                    PixelKey(
+                        when {
+                            busy > 0 -> "Saqlanmoqda · ${ids.size - left}/${ids.size}"
+                            left == 0 -> "Hammasi telefonda ✓"
+                            else -> "Hammasini saqlash · $left ta"
+                        },
+                        Modifier.fillMaxWidth(), glyph = if (left == 0) Glyph.CHECK else Glyph.DOWNLOAD, glyphSize = 13.dp,
+                        active = left == 0 || busy > 0,
+                    ) { if (store.premium) store.saveAll(ids) else ui.premium = true }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (s in Sort.entries) Chip(s.label, sort == s) { sort = s }
                     }
@@ -115,8 +129,7 @@ fun Liked(onOpenRadio: () -> Unit) {
                 Box(Modifier.animateItem()) {
                     SongRow(
                         t, current, engine.playing, sub.uppercase(),
-                        onClick = { ui.song = t.id },
-                        onPlay = { if (current) store.toggle() else store.play(t.id, ids) },
+                        onClick = { if (current) store.toggle() else store.play(t.id, ids) },
                         onLongClick = { ui.song = t.id },
                         trailing = {
                             Key(RoundedCornerShape(13.dp), Modifier.size(44.dp, 62.dp), active = true, onPress = { store.toggleLike(t.id) }) {

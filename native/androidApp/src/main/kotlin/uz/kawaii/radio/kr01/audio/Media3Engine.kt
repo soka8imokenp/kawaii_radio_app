@@ -139,6 +139,12 @@ class Media3Engine(context: Context) : AudioEngine {
     }
 
     // the service applies it together with the crossfade curves
+    override fun refreshItem(item: QueueItem) = run { c ->
+        for (i in 0 until c.mediaItemCount) {
+            if (c.getMediaItemAt(i).mediaId == item.id && i != c.currentMediaItemIndex) c.replaceMediaItem(i, item.toMediaItem())
+        }
+    }
+
     override fun setVolume(v: Float) { PlaybackTuning.master = v.coerceIn(0f, 1f) }
 
     override fun setCrossfade(seconds: Int) { PlaybackTuning.crossfadeMs = seconds.coerceAtLeast(0) * 1000L }

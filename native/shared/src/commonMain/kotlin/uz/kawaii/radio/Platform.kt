@@ -37,7 +37,9 @@ interface Platform {
     fun avatarPhoto(): String?
 
     /** Keeps the song on the device so it plays offline; returns false when it could not be stored. */
-    suspend fun saveOffline(trackId: String, uri: String): Boolean
+    suspend fun saveOffline(trackId: String, uri: String, onProgress: (Float) -> Unit = {}): Boolean
+    /** Copies the song as an mp3 into the phone's Music/Kawaii Radio folder; returns where, or null. */
+    suspend fun exportToPhone(trackId: String, uri: String, fileName: String): String?
     fun removeOffline(trackId: String)
     /** Local copy of a saved song, if there is one. */
     fun offlineUri(trackId: String): String?
@@ -97,6 +99,8 @@ interface AudioEngine {
     fun setShuffle(on: Boolean)
     /** Puts a song right after the current one. */
     fun insertNext(item: QueueItem)
+    /** Points a queued song at a new address (e.g. its offline copy); the playing song is left alone. */
+    fun refreshItem(item: QueueItem)
     /** 0..1, used by the sleep timer to fade out. */
     fun setVolume(v: Float)
     /** Blend the end of each song into the next one; 0 turns it off. */

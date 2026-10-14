@@ -123,6 +123,8 @@ fun SongSheet(id: String?, onClose: () -> Unit) {
     if (id != null) last = id
     val t = tracks.firstOrNull { it.id == last }
     var queued by remember(id) { mutableStateOf(false) }
+    var exported by remember(id) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     Sheet(id != null, onClose, "Qo'shiq") {
         if (t == null) return@Sheet
@@ -157,6 +159,27 @@ fun SongSheet(id: String?, onClose: () -> Unit) {
                 PixelKey(if (liked) "Sevimlida" else "Sevimli", Modifier.weight(1f), glyph = if (liked) Glyph.HEART_FULL else Glyph.HEART, glyphSize = 16.dp, height = 46.dp, active = liked) { store.toggleLike(t.id) }
                 PixelKey("Tavsif", Modifier.weight(1f), glyph = Glyph.INFO, glyphSize = 15.dp, height = 46.dp) { ui.info = t.id }
             }
+            val saved by store.saved.collectAsState()
+            val downloads by store.downloads.collectAsState()
+            val exporting by store.exporting.collectAsState()
+            val p = downloads[t.id]
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PixelKey(
+                    when { p != null -> "Saqlanmoqda ${(p * 100).toInt()}%"; t.id in saved -> "Ilovada ✓"; else -> "Saqlash" },
+                    Modifier.weight(1f), glyph = if (t.id in saved) Glyph.CHECK else Glyph.DOWNLOAD, glyphSize = 13.dp, height = 46.dp,
+                    active = t.id in saved || p != null,
+                ) { if (store.premium) store.toggleSave(t.id) else ui.premium = true }
+                PixelKey(
+                    if (t.id in exporting) "Yuklanmoqda…" else "Telefonga", Modifier.weight(1f),
+                    glyph = Glyph.DOWNLOAD, glyphSize = 13.dp, height = 46.dp, active = t.id in exporting,
+                ) {
+                    if (!store.premium) ui.premium = true
+                    else if (t.id !in exporting) scope.launch {
+                        exported = store.exportToPhone(t.id)?.let { "Saqlandi: $it" } ?: "Saqlab bo'lmadi, internetni tekshiring"
+                    }
+                }
+            }
+            exported?.let { BasicText(it, Modifier.fillMaxWidth(), style = T.pixel(12.sp, K.inkSoft, lh = 15.sp)) }
             val artist = mainArtist(t.artist)
             val songs = tracks.filter { mainArtist(it.artist).equals(artist, true) }.map { it.id }
             if (songs.size > 1) {
@@ -254,7 +277,8 @@ fun PremiumSheet(open: Boolean, onClose: () -> Unit) {
                 }
             }
         }
-        GoldButton("OBUNA BO'LISH", Modifier.padding(top = 20.dp)) { store.platform.openUrl("https://kawaii.uz/kawaii-pass") }
+        // temporary: there is no payment yet, so subscribing switches Kawaii Pass on right away
+        GoldButton("OBUNA BO'LISH", Modifier.padding(top = 20.dp)) { store.activatePass(); onClose() }
     }
 }
 

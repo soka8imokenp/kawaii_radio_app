@@ -124,7 +124,10 @@ fun Home(ui: UiState) {
     val band = tabList(tab, tracks, saved).ifEmpty { tabList(if (t.isOst) Tab.OST else Tab.JPOP, tracks, saved) }
     val pos = band.indexOfFirst { it.i == tracks.indexOf(t) }.coerceAtLeast(0)
     val at = { d: Int -> band[(((pos + d) % band.size) + band.size) % band.size] }
-    val onSave = { if (store.premium) store.toggleSave(t.id) else ui.premium = true }
+    val downloads by store.downloads.collectAsState()
+    val saving = downloads[t.id]
+    val pass by store.pass.collectAsState()
+    val onSave = { if (pass) store.toggleSave(t.id) else ui.premium = true }
 
     val scope = rememberCoroutineScope()
     val drawer = remember { Drawer(Animatable(0f), false) }
@@ -234,7 +237,14 @@ fun Home(ui: UiState) {
                         }
                         Key(RoundedCornerShape(15.dp), Modifier.weight(1f).height(40.dp), active = isSaved, onPress = onSave) {
                             Px(Glyph.SAVE, 19.dp, K.ctlInk)
-                            BasicText(if (isSaved) "SAQLANGAN" else "SAQLASH", style = T.micro())
+                            BasicText(
+                                when {
+                                    saving != null -> "SAQLANMOQDA ${(saving * 100).toInt()}%"
+                                    isSaved -> "SAQLANGAN"
+                                    else -> "SAQLASH"
+                                },
+                                style = T.micro(),
+                            )
                             if (isSaved) Led(true)
                         }
                     }

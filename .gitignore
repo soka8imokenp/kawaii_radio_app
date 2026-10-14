@@ -11,3 +11,7 @@ node_modules
 .kotlin
 build
 local.properties
+
+# local music to upload with cloud/import.mjs (never committed)
+soka8imo_songs/
+*.mp3

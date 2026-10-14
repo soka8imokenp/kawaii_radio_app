@@ -50,6 +50,7 @@ import uz.kawaii.radio.ui.kit.housing
 import uz.kawaii.radio.ui.sheets.ArtistSheet
 import uz.kawaii.radio.ui.sheets.AvatarSheet
 import uz.kawaii.radio.ui.sheets.InfoSheet
+import uz.kawaii.radio.ui.sheets.LibrarySheet
 import uz.kawaii.radio.ui.sheets.PremiumSheet
 import uz.kawaii.radio.ui.sheets.SongSheet
 import uz.kawaii.radio.ui.sheets.UpdateSheet
@@ -76,6 +77,7 @@ class UiState {
     var avatarPicker by mutableStateOf(false)
     var artistPicker by mutableStateOf(false)
     var wrapped by mutableStateOf(false)
+    var library by mutableStateOf(false)
     var update by mutableStateOf<UpdateInfo?>(null)
     var updateBusy by mutableStateOf(false)
     /** Set by Home while its lyrics drawer is open; closes it. */
@@ -90,6 +92,7 @@ class UiState {
         if (avatarPicker) { avatarPicker = false; return true }
         if (artistPicker) { artistPicker = false; return true }
         if (wrapped) { wrapped = false; return true }
+        if (library) { library = false; return true }
         closeDrawer?.let { it(); return true }
         if (page != Page.Home) { page = Page.Home; return true }
         return false
@@ -147,6 +150,7 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
                 NavBar(ui.page) { ui.page = it }
             }
 
+            LibrarySheet(open = ui.library, onClose = { ui.library = false })
             SongSheet(id = ui.song, onClose = { ui.song = null })
             InfoSheet(id = ui.info, onClose = { ui.info = null })
             PremiumSheet(open = ui.premium, onClose = { ui.premium = false })

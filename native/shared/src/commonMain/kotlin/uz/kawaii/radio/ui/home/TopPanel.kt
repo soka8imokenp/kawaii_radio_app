@@ -21,6 +21,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -104,6 +108,9 @@ import uz.kawaii.radio.data.lineAt
 import uz.kawaii.radio.data.parseLrc
 import uz.kawaii.radio.data.AutoLyrics
 import uz.kawaii.radio.ui.LocalStore
+import uz.kawaii.radio.ui.LocalUi
+import uz.kawaii.radio.ui.kit.Glyph
+import uz.kawaii.radio.ui.kit.Px
 import uz.kawaii.radio.ui.kit.LocalSound
 import uz.kawaii.radio.ui.kit.Logo
 import uz.kawaii.radio.ui.kit.darkWell
@@ -164,6 +171,7 @@ fun TopPanel(
     val store = LocalStore.current
     val engine by store.engine.collectAsState()
     val saved by store.saved.collectAsState()
+    val pass by store.pass.collectAsState()
     val list = remember(tab, tracks, saved) { tabList(tab, tracks, saved) }
 
     Box(
@@ -181,7 +189,7 @@ fun TopPanel(
             Spacer(Modifier.height(8.dp))
             Segmented(tab, onTab)
             Spacer(Modifier.height(10.dp))
-            if (list.isNotEmpty()) Covers(list, track.id, engine.playing, coverScale) else EmptySaved(store.premium, onPremium, coverScale)
+            if (list.isNotEmpty()) Covers(list, track.id, engine.playing, coverScale) else EmptySaved(pass, onPremium, coverScale)
             Spacer(Modifier.height(4.dp))
             NowCard(track, engine.playing, drawer, clock, onOpen = onToggle)
             Grip(drawer, onToggle, onDragEnd)
@@ -252,6 +260,8 @@ private fun coverColors(b: ImageBitmap): List<Color> {
 
 @Composable
 private fun Header(playing: Boolean) {
+    val ui = LocalUi.current
+    val sound = LocalSound.current
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Logo(Color(0xFFF0F0F0), Modifier.size(26.dp))
         Spacer(Modifier.width(10.dp))
@@ -259,6 +269,17 @@ private fun Header(playing: Boolean) {
             BasicText("Kawaii Radio", style = T.inter(16.sp, FontWeight.Bold, Color.White, lh = 16.sp, ls = 0.01.em))
             Spacer(Modifier.height(3.dp))
             BasicText("KR-01 · J-POP FM", style = T.pixel(11.sp, K.dimText, ls = 0.12.em, lh = 11.sp))
+        }
+        // the whole catalogue as a list
+        Row(
+            Modifier.padding(end = 8.dp).darkWell(RoundedCornerShape(9.dp))
+                .tap(onClick = { sound.press(); ui.library = true })
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Px(Glyph.LIST, 12.dp, Color(0xFFB8BBC3))
+            BasicText("RO'YXAT", style = T.pixel(12.sp, Color(0xFFB8BBC3), lh = 12.sp))
         }
         Row(
             Modifier.darkWell(RoundedCornerShape(9.dp)).padding(horizontal = 10.dp, vertical = 5.dp),
@@ -583,42 +604,41 @@ private fun FullLyrics(lines: List<LyricLine>, clock: State<Double>, note: Strin
         return
     }
     val li by remember(lines) { derivedStateOf { lineAt(lines, clock.value) } }
-    val scroll = rememberScrollState()
-    val tops = remember(lines) { mutableStateMapOf<Int, Pair<Int, Int>>() }
+    val list = rememberLazyListState()
     var viewport by remember { mutableStateOf(0) }
-    LaunchedEffect(li, viewport, tops[li]) {
-        val (top, h) = tops[li] ?: return@LaunchedEffect
-        scroll.animateScrollTo((top - viewport / 2 + h / 2).coerceAtLeast(0))
+    // keep the sung line in the middle: the top padding is half the window, so only half a line remains
+    LaunchedEffect(li, viewport) {
+        if (li < 0 || viewport == 0) return@LaunchedEffect
+        val h = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == li }?.size
+            ?: list.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 0
+        list.animateScrollToItem(li, h / 2)
     }
     val glow = lyricGlow()
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val pad = maxWidth * 0.4f
-        Column(
-            Modifier.fillMaxSize()
-                .onPlaced { viewport = it.size.height }
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithContent {
-                    drawContent()
-                    drawRect(
-                        Brush.verticalGradient(0f to Color.Transparent, 0.18f to Color.Black, 0.82f to Color.Black, 1f to Color.Transparent),
-                        blendMode = BlendMode.DstIn,
-                    )
-                }
-                .verticalScroll(scroll)
-                .padding(vertical = pad),
-        ) {
-            lines.forEachIndexed { k, l ->
-                val on = k == li
-                val color by animateColorAsState(if (on) K.lyric else K.lyricDim, tween(300))
-                BasicText(
-                    l.text.ifEmpty { "♪" },
-                    Modifier.fillMaxWidth()
-                        .onPlaced { tops[k] = it.positionInParent().y.toInt() to it.size.height }
-                        .tap(onClick = { store.seek(l.t) })
-                        .padding(vertical = 5.dp),
-                    style = T.dot(17.sp, color, lh = 24.sp).let { if (on) it.copy(shadow = glow) else it },
+    LazyColumn(
+        Modifier.fillMaxSize()
+            .onPlaced { viewport = it.size.height }
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawRect(
+                    Brush.verticalGradient(0f to Color.Transparent, 0.18f to Color.Black, 0.82f to Color.Black, 1f to Color.Transparent),
+                    blendMode = BlendMode.DstIn,
                 )
-            }
+            },
+        state = list,
+        // room above the first and below the last line, so they can sit in the middle too
+        contentPadding = PaddingValues(vertical = with(LocalDensity.current) { (viewport / 2).toDp() }),
+    ) {
+        itemsIndexed(lines) { k, l ->
+            val on = k == li
+            val color by animateColorAsState(if (on) K.lyric else K.lyricDim, tween(300))
+            BasicText(
+                l.text.ifEmpty { "♪" },
+                Modifier.fillMaxWidth()
+                    .tap(onClick = { store.seek(l.t) })
+                    .padding(vertical = 5.dp),
+                style = T.dot(17.sp, color, lh = 24.sp).let { if (on) it.copy(shadow = glow) else it },
+            )
         }
     }
 }

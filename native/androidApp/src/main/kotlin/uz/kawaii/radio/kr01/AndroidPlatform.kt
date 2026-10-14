@@ -4,6 +4,11 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.content.ContentValues
+import android.media.MediaScannerConnection
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -163,20 +168,72 @@ class AndroidPlatform(private val context: Context) : Platform {
 
     private fun offlineFile(id: String) = File(offlineDir, id.filter { it.isLetterOrDigit() || it == '-' || it == '_' } + ".audio")
 
-    override suspend fun saveOffline(trackId: String, uri: String): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun saveOffline(trackId: String, uri: String, onProgress: (Float) -> Unit): Boolean = withContext(Dispatchers.IO) {
         val file = offlineFile(trackId)
         if (file.length() > 0) return@withContext true
         val part = File(file.path + ".part")
         runCatching {
-            val c = (URL(uri).openConnection() as HttpURLConnection).apply { connectTimeout = 15_000; readTimeout = 30_000 }
-            try {
-                if (c.responseCode !in 200..299) error("HTTP ${c.responseCode}")
-                c.inputStream.use { i -> part.outputStream().use { o -> i.copyTo(o, 64 * 1024) } }
-            } finally {
-                c.disconnect()
-            }
+            download(uri, part, onProgress)
             part.renameTo(file)
         }.getOrDefault(false).also { if (!it) part.delete() }
+    }
+
+    /** Streams [uri] into [to], reporting 0..1. */
+    private fun download(uri: String, to: File, onProgress: (Float) -> Unit) {
+        val c = (URL(uri).openConnection() as HttpURLConnection).apply { connectTimeout = 15_000; readTimeout = 30_000 }
+        try {
+            if (c.responseCode !in 200..299) error("HTTP ${c.responseCode}")
+            val total = c.contentLengthLong
+            var done = 0L
+            var last = 0L
+            c.inputStream.use { i ->
+                to.outputStream().use { o ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = i.read(buf)
+                        if (n < 0) break
+                        o.write(buf, 0, n)
+                        done += n
+                        if (total > 0 && done - last > 128 * 1024) { last = done; onProgress(done.toFloat() / total) }
+                    }
+                }
+            }
+            onProgress(1f)
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    override suspend fun exportToPhone(trackId: String, uri: String, fileName: String): String? = withContext(Dispatchers.IO) {
+        val bad = setOf('\\', '/', ':', '*', '?', '"', '<', '>', '|')
+        val name = fileName.map { if (it in bad) '_' else it }.joinToString("").take(120) + ".mp3"
+        runCatching {
+            // reuse the offline copy when there is one, otherwise fetch it once
+            val tmp = File(context.cacheDir, "export.tmp")
+            val src = offlineFile(trackId).takeIf { it.length() > 0 } ?: tmp.also { download(uri, it) {} }
+            if (Build.VERSION.SDK_INT >= 29) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Audio.Media.DISPLAY_NAME, name)
+                    put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg")
+                    put(MediaStore.Audio.Media.RELATIVE_PATH, "Music/Kawaii Radio")
+                    put(MediaStore.Audio.Media.IS_PENDING, 1)
+                }
+                val r = context.contentResolver
+                val item = r.insert(MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values) ?: error("no media store")
+                r.openOutputStream(item)!!.use { o -> src.inputStream().use { it.copyTo(o) } }
+                r.update(item, ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 0) }, null, null)
+            } else {
+                // Android 9 and older: the Music folder needs the storage permission
+                if (activity?.ensureStoragePermission() != true) error("no permission")
+                @Suppress("DEPRECATION")
+                val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Kawaii Radio").apply { mkdirs() }
+                val out = File(dir, name)
+                src.copyTo(out, overwrite = true)
+                MediaScannerConnection.scanFile(context, arrayOf(out.path), arrayOf("audio/mpeg"), null)
+            }
+            tmp.delete()
+            "Music/Kawaii Radio/$name"
+        }.getOrNull()
     }
 
     override fun removeOffline(trackId: String) {

@@ -127,8 +127,16 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     private val _sleepAt = MutableStateFlow<Long?>(null)
     val sleepAt: StateFlow<Long?> = _sleepAt.asStateFlow()
 
-    /** Kawaii Pass subscription (temporary flag until the kawaii.uz backend exists). */
-    val premium: Boolean = kv.get(PREMIUM_KEY) == "1"
+    private val _pass = MutableStateFlow(kv.get(PREMIUM_KEY) == "1")
+    /** Kawaii Pass subscription (temporary local flag until the kawaii.uz backend exists). */
+    val pass: StateFlow<Boolean> = _pass.asStateFlow()
+    val premium: Boolean get() = _pass.value
+
+    /** Temporary: "Obuna bo'lish" simply turns Kawaii Pass on, on this phone. */
+    fun activatePass() {
+        kv.set(PREMIUM_KEY, "1")
+        _pass.value = true
+    }
 
     /** Short "static" moment on the LCD while switching stations. */
     private val _tuning = MutableStateFlow(false)
@@ -282,17 +290,56 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
         return r
     }
 
-    /** Keeps the song inside the app so it plays offline. */
+    private val _downloads = MutableStateFlow<Map<String, Float>>(emptyMap())
+    /** Songs being saved for offline listening → progress 0..1. */
+    val downloads: StateFlow<Map<String, Float>> = _downloads.asStateFlow()
+
+    /** Keeps the song inside the app so it plays without internet; tapping again removes the copy. */
     fun toggleSave(id: String) {
-        val t = track(id) ?: return
+        if (id in _downloads.value) return
         if (id in _saved.value) {
             _saved.value = _saved.value - id
             platform.removeOffline(id)
+            track(id)?.let { audio.refreshItem(queueItem(it)) }
+            persist()
         } else {
-            _saved.value = _saved.value + id
-            if (t.audioSrc.startsWith("http")) scope.launch { platform.saveOffline(id, t.audioSrc) }
+            scope.launch { save(id) }
         }
-        persist()
+    }
+
+    /** "Hammasini saqlash": every song of [ids] that is not saved yet, one after another. */
+    fun saveAll(ids: List<String>) {
+        val todo = ids.filter { it !in _saved.value && it !in _downloads.value }
+        if (todo.isEmpty()) return
+        _downloads.value = _downloads.value + todo.associateWith { 0f }
+        scope.launch { for (id in todo) save(id) }
+    }
+
+    private suspend fun save(id: String) {
+        val t = track(id) ?: return
+        _downloads.value = _downloads.value + (id to 0f)
+        val ok = platform.saveOffline(id, t.audioSrc) { p -> _downloads.value = _downloads.value + (id to p) }
+        _downloads.value = _downloads.value - id
+        if (ok) {
+            _saved.value = (_saved.value + id).distinct()
+            // from now on the queue plays the local copy
+            audio.refreshItem(queueItem(t))
+            persist()
+        }
+    }
+
+    private val _exporting = MutableStateFlow<Set<String>>(emptySet())
+    val exporting: StateFlow<Set<String>> = _exporting.asStateFlow()
+
+    /** Puts the mp3 into the phone's Music folder; returns where it went, or null. */
+    suspend fun exportToPhone(id: String): String? {
+        val t = track(id) ?: return null
+        _exporting.value = _exporting.value + id
+        return try {
+            platform.exportToPhone(id, t.audioSrc, "${t.artist} - ${t.title}")
+        } finally {
+            _exporting.value = _exporting.value - id
+        }
     }
 
     /** Sleep timer: the music fades out and stops after [minutes]; null turns it off. */

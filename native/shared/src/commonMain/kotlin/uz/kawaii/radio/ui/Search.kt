@@ -112,8 +112,8 @@ fun Search(active: Boolean) {
                         val ids = recentTracks.map { it.id }
                         SongRow(
                             t, t.id == engine.id, engine.playing,
-                            onClick = { ui.song = t.id },
-                            onPlay = { if (t.id == engine.id) store.toggle() else store.play(t.id, ids) },
+                            onClick = { if (t.id == engine.id) store.toggle() else store.play(t.id, ids) },
+                            onLongClick = { ui.song = t.id },
                         )
                     }
                 }
@@ -123,8 +123,8 @@ fun Search(active: Boolean) {
                     val ids = results.map { it.id }
                     SongRow(
                         t, t.id == engine.id, engine.playing, sub = t.category.uppercase(),
-                        onClick = { ui.song = t.id },
-                        onPlay = { focus.clearFocus(); if (t.id == engine.id) store.toggle() else store.play(t.id, ids) },
+                        onClick = { focus.clearFocus(); if (t.id == engine.id) store.toggle() else store.play(t.id, ids) },
+                        onLongClick = { ui.song = t.id },
                     )
                 }
             }

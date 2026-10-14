@@ -98,6 +98,7 @@ fun Profile(ui: UiState) {
     val stats by store.stats.collectAsState()
     val recent by store.recent.collectAsState()
     val profile by store.profile.collectAsState()
+    val pass by store.pass.collectAsState()
     val sleepAt by store.sleepAt.collectAsState()
     var check by remember { mutableStateOf(Check.Idle) }
     val byId = remember(tracks) { tracks.associateBy { it.id } }
@@ -181,7 +182,7 @@ fun Profile(ui: UiState) {
             ) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     BasicText("KAWAII PASS", style = T.pixel(14.sp, K.lcdInk, lh = 14.sp).copy(shadow = ls))
-                    BasicText(if (store.premium) "FAOL ●" else "YO'Q ○", style = T.pixel(14.sp, if (store.premium) K.lcdInk else K.lcdGhost, lh = 14.sp))
+                    BasicText(if (pass) "FAOL ●" else "YO'Q ○", style = T.pixel(14.sp, if (pass) K.lcdInk else K.lcdGhost, lh = 14.sp))
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -199,7 +200,7 @@ fun Profile(ui: UiState) {
             }
         }
         PixelKey("Kawaii Wrapped · oy xulosasi", Modifier.padding(top = 12.dp).fillMaxWidth(), glyph = Glyph.STAR, glyphSize = 15.dp, height = 46.dp) { ui.wrapped = true }
-        if (!store.premium) GoldButton("KAWAII PASS OLISH", Modifier.padding(top = 12.dp), 16, 14) { ui.premium = true }
+        if (!pass) GoldButton("KAWAII PASS OLISH", Modifier.padding(top = 12.dp), 16, 14) { ui.premium = true }
 
         if (top.isNotEmpty()) {
             SectionLabel("Eng ko'p tinglangan")

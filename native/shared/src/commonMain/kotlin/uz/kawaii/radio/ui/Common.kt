@@ -138,8 +138,8 @@ fun Cover(url: String, size: Dp, radius: Dp = 9.dp, modifier: Modifier = Modifie
 }
 
 /**
- * A song as a key cap seated in a tray: tap opens [onClick] (usually the song card),
- * the round key plays it; long-press does [onLongClick].
+ * A song as a key cap seated in a tray: tap plays it, long-press opens the song card,
+ * the key on the right saves it for offline listening.
  */
 @Composable
 fun SongRow(
@@ -148,7 +148,6 @@ fun SongRow(
     playing: Boolean,
     sub: String? = null,
     onClick: () -> Unit,
-    onPlay: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
@@ -179,9 +178,7 @@ fun SongRow(
             }
             if (current) Led(playing)
         }
-        Key(RoundedCornerShape(13.dp), Modifier.width(44.dp).height(62.dp), onPress = onPlay) {
-            if (current && playing) PauseIcon(K.ctlInk) else PlayIcon(K.ctlInk)
-        }
+        SaveKey(t.id, Modifier.width(44.dp).height(62.dp))
         trailing?.invoke()
     }
 }
@@ -230,6 +227,28 @@ fun MiniPlayer(onOpen: () -> Unit) {
                 }
                 Key(CircleShape, Modifier.size(40.dp), onPress = { store.next() }) { Px(Glyph.NEXT, 13.dp, K.ctlInk) }
             }
+        }
+    }
+}
+
+/**
+ * Offline key: a down arrow, the percentage while it downloads, a lit check once the song is on
+ * the phone (tap again to remove the copy).
+ */
+@Composable
+fun SaveKey(id: String, modifier: Modifier) {
+    val store = LocalStore.current
+    val saved by store.saved.collectAsState()
+    val downloads by store.downloads.collectAsState()
+    val ui = LocalUi.current
+    val pass by store.pass.collectAsState()
+    val p = downloads[id]
+    val isSaved = id in saved
+    Key(RoundedCornerShape(13.dp), modifier, active = isSaved || p != null, onPress = { if (pass) store.toggleSave(id) else ui.premium = true }) {
+        when {
+            p != null -> BasicText("${(p * 100).toInt()}%", style = T.micro(10.sp, K.ctlInk, ls = 0.em))
+            isSaved -> Px(Glyph.CHECK, 14.dp, K.ledGreen)
+            else -> Px(Glyph.DOWNLOAD, 13.dp, K.ctlInk)
         }
     }
 }
