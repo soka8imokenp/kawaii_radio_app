@@ -44,7 +44,7 @@ export function Splash({ onDone }: { onDone: () => void }) {
 
         {/* absolutely placed so the logo alone sits dead-centre, exactly like the native splash */}
         <motion.div className="absolute left-1/2 top-full flex w-[260px] -translate-x-1/2 flex-col items-center"
-          initial={{ y: 0 }} animate={{ y: -28 }} transition={{ delay: 0.15, type: 'spring', stiffness: 160, damping: 18 }}>
+          initial={{ y: 0 }} animate={{ y: -8 }} transition={{ delay: 0.15, type: 'spring', stiffness: 160, damping: 18 }}>
           <motion.div
             className="font-pixel text-[22px] leading-none tracking-[0.18em] text-white"
             initial={{ opacity: 0, y: 8, filter: 'blur(4px)' }}
