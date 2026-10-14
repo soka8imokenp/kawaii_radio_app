@@ -10,3 +10,4 @@ android/capacitor-cordova-android-plugins/build
 .idea
 .DS_Store
 .claude
+*.local

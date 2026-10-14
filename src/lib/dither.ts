@@ -9,6 +9,7 @@ export async function ditherCover(src: string, w = 96, h = 96, ink: [number, num
   const hit = cache.get(key);
   if (hit) return hit;
   const img = new Image();
+  img.crossOrigin = 'anonymous'; // cloud covers are cross-origin; getImageData needs CORS
   img.src = src;
   await img.decode();
   const c = document.createElement('canvas');

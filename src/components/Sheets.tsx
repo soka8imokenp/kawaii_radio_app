@@ -37,7 +37,7 @@ export function LibrarySheet({ open, onClose }: { open: boolean; onClose: () => 
   const s = usePlayer();
   const [tab, setTab] = useState<'JPOP' | 'OST' | 'LIKED'>('JPOP');
   const list = useMemo(() => playlist.map((t, i) => ({ t, i })).filter(({ t }) =>
-    tab === 'LIKED' ? s.liked.includes(t.id) : tab === 'OST' ? isOst(t.category) : !isOst(t.category)), [tab, s.liked]);
+    tab === 'LIKED' ? s.liked.includes(t.id) : tab === 'OST' ? isOst(t.category) : !isOst(t.category)), [tab, s.liked, s.catalog]);
   return (
     <Sheet open={open} onClose={onClose} title="Kassetalar · Tapes">
       {/* physical 3-way switch */}
@@ -69,7 +69,7 @@ export function LibrarySheet({ open, onClose }: { open: boolean; onClose: () => 
               </div>
               <div className="flex flex-col items-end gap-1.5 pr-1">
                 <Led on={active && s.playing} />
-                <span className="font-lcd text-[18px] leading-none text-[var(--ink-soft)]">{Math.floor(t.duration / 60)}:{String(t.duration % 60).padStart(2, '0')}</span>
+                <span className="font-lcd text-[18px] leading-none text-[var(--ink-soft)]">{t.duration ? `${Math.floor(t.duration / 60)}:${String(t.duration % 60).padStart(2, '0')}` : '–:––'}</span>
               </div>
             </motion.button>
           );

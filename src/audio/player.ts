@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { MediaSession } from '@jofr/capacitor-media-session';
 import { playlist } from '../data/playlist';
+import { cachedCloudTracks, fetchCloudTracks } from '../data/cloud';
 import type { Track } from '../data/types';
 
 export interface PlayerState {
@@ -18,18 +19,33 @@ export interface PlayerState {
   lang: 'uz' | 'jp';
   tuning: boolean; // short "static" moment while switching stations
   preview: number; // stations the tuner wheel is currently dialled away from
+  catalog: number; // bumps whenever cloud tracks are merged into the playlist
 }
+
+/* ---------- cloud tracks: appended after the built-in ones ---------- */
+const BUILTIN = playlist.length;
+function mergeCloud(tracks: Track[]) {
+  const builtinIds = new Set(playlist.slice(0, BUILTIN).map((t) => t.id));
+  playlist.splice(BUILTIN, playlist.length - BUILTIN, ...tracks.filter((t) => !builtinIds.has(t.id)));
+}
+mergeCloud(cachedCloudTracks());
 
 const LS = 'kr01';
 const saved = (() => {
   try { return JSON.parse(localStorage.getItem(LS) || '{}'); } catch { return {}; }
 })();
 
+const savedIndex = (() => {
+  const byId = typeof saved.id === 'string' ? playlist.findIndex((t) => t.id === saved.id) : -1;
+  if (byId >= 0) return byId;
+  return typeof saved.index === 'number' ? Math.max(0, Math.min(saved.index, playlist.length - 1)) : 0;
+})();
+
 let state: PlayerState = {
-  index: typeof saved.index === 'number' ? Math.min(saved.index, playlist.length - 1) : 0,
+  index: savedIndex,
   playing: false,
   time: 0,
-  duration: playlist[0].duration,
+  duration: playlist[savedIndex].duration,
   volume: typeof saved.volume === 'number' ? saved.volume : 0.8,
   shuffle: !!saved.shuffle,
   loop: !!saved.loop,
@@ -39,6 +55,7 @@ let state: PlayerState = {
   lang: saved.lang === 'jp' ? 'jp' : 'uz',
   tuning: false,
   preview: 0,
+  catalog: 0,
 };
 
 const listeners = new Set<() => void>();
@@ -46,7 +63,7 @@ function set(patch: Partial<PlayerState>) {
   state = { ...state, ...patch };
   listeners.forEach((l) => l());
   if ('index' in patch || 'volume' in patch || 'shuffle' in patch || 'loop' in patch || 'liked' in patch || 'saved' in patch || 'lang' in patch) {
-    try { localStorage.setItem(LS, JSON.stringify({ index: state.index, volume: state.volume, shuffle: state.shuffle, loop: state.loop, liked: state.liked, saved: state.saved, lang: state.lang })); } catch { /* private mode */ }
+    try { localStorage.setItem(LS, JSON.stringify({ index: state.index, id: playlist[state.index]?.id, volume: state.volume, shuffle: state.shuffle, loop: state.loop, liked: state.liked, saved: state.saved, lang: state.lang })); } catch { /* private mode */ }
   }
 }
 
@@ -158,18 +175,56 @@ function seek(t: number) {
 }
 
 audio.addEventListener('timeupdate', () => set({ time: audio.currentTime }));
-audio.addEventListener('loadedmetadata', () => set({ duration: audio.duration || playlist[state.index].duration }));
+audio.addEventListener('loadedmetadata', () => {
+  const t = playlist[state.index];
+  if (!t.duration && Number.isFinite(audio.duration)) t.duration = Math.round(audio.duration); // cloud tracks may come without one
+  set({ duration: audio.duration || t.duration });
+});
 audio.addEventListener('ended', () => (state.loop ? (seek(0), play()) : player.next()));
 audio.addEventListener('pause', () => state.playing && !audio.ended && set({ playing: false }));
 audio.addEventListener('play', () => !state.playing && set({ playing: true }));
 
 /* ---------- lock screen / notification controls ---------- */
 const native = Capacitor.isNativePlatform();
-function updateSession(t: Track) {
-  const artwork = [{ src: new URL(t.coverArt, location.href).href, sizes: '512x512', type: 'image/webp' }];
-  const meta = { title: t.title, artist: t.artist, album: 'Kawaii Radio', artwork };
-  if (native) MediaSession.setMetadata(meta).catch(() => {});
-  else if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata(meta);
+
+/**
+ * The native plugin downloads http(s) artwork itself with HttpURLConnection, but https://localhost only
+ * exists inside the WebView: the request fails and Capacitor turns that into an app crash.
+ * So on Android the cover is handed over as a small base64 JPEG instead.
+ */
+function coverDataUrl(src: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // cloud covers come from the Worker; without this the canvas is tainted
+    img.onload = () => {
+      try {
+        const s = Math.min(512, img.naturalWidth, img.naturalHeight) || 512;
+        const c = document.createElement('canvas');
+        c.width = c.height = s;
+        const k = Math.max(s / img.naturalWidth, s / img.naturalHeight);
+        const w = img.naturalWidth * k, h = img.naturalHeight * k;
+        c.getContext('2d')!.drawImage(img, (s - w) / 2, (s - h) / 2, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+let sessionSeq = 0;
+async function updateSession(t: Track) {
+  const meta = { title: t.title, artist: t.artist, album: 'Kawaii Radio' };
+  if (native) {
+    const seq = ++sessionSeq;
+    const cover = await coverDataUrl(t.coverArt);
+    if (seq !== sessionSeq) return; // a newer track was selected meanwhile
+    const artwork = cover ? [{ src: cover, sizes: '512x512', type: 'image/jpeg' }] : [];
+    MediaSession.setMetadata({ ...meta, artwork }).catch(() => {});
+  } else if ('mediaSession' in navigator) {
+    const artwork = [{ src: new URL(t.coverArt, location.href).href, sizes: '512x512', type: 'image/webp' }];
+    navigator.mediaSession.metadata = new MediaMetadata({ ...meta, artwork });
+  }
 }
 const actions: [MediaSessionAction, () => void][] = [
   ['play', play], ['pause', pause], ['nexttrack', () => player.next()], ['previoustrack', () => player.prev()],
@@ -178,12 +233,29 @@ for (const [a, fn] of actions) {
   if (native) MediaSession.setActionHandler({ action: a }, fn).catch(() => {});
   else if ('mediaSession' in navigator) { try { navigator.mediaSession.setActionHandler(a, fn); } catch { /* unsupported */ } }
 }
+// only report real changes (timeupdate fires several times a second), and don't start the
+// native foreground service / notification before the user has played anything
+let lastPs: 'playing' | 'paused' | null = null;
 listeners.add(() => {
   const ps = state.playing ? 'playing' : 'paused';
+  if (ps === lastPs || (lastPs === null && ps === 'paused')) return;
+  lastPs = ps;
   if (native) MediaSession.setPlaybackState({ playbackState: ps }).catch(() => {});
   else if ('mediaSession' in navigator) navigator.mediaSession.playbackState = ps;
 });
 updateSession(playlist[state.index]);
+
+/** Pulls the cloud playlist on launch and whenever the app comes back to the foreground. */
+async function refreshCatalog() {
+  const tracks = await fetchCloudTracks();
+  if (!tracks) return;
+  const currentId = playlist[state.index]?.id;
+  mergeCloud(tracks);
+  const i = playlist.findIndex((t) => t.id === currentId);
+  set({ catalog: state.catalog + 1, index: i >= 0 ? i : Math.min(state.index, playlist.length - 1) });
+}
+refreshCatalog();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshCatalog(); });
 
 export function usePlayer(): PlayerState {
   return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => state);

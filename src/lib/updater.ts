@@ -41,7 +41,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     const notes = String(rel.body ?? '')
       .split('\n')
       .map((l: string) => l.replace(/^[-*•\s]+/, '').trim())
-      .filter(Boolean)
+      .filter((l: string) => l && !/^co-authored-by:/i.test(l))
       .slice(0, 6);
     return {
       version: String(rel.tag_name).replace(/^v/, ''),

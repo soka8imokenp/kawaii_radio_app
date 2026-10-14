@@ -1,0 +1,9 @@
+name = "kawaii-radio"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "kawaii-radio"
+
+# UPLOAD_TOKEN is a secret:  npx wrangler secret put UPLOAD_TOKEN

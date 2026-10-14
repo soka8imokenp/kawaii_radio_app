@@ -28,6 +28,12 @@ pnpm build
 pnpm cap:sync       # сборка и синхронизация с android/
 pnpm android        # открыть в Android Studio
 ```
+## Облако (свои треки без пересборки)
+- `cloud/`: Cloudflare Worker + R2. Хранит mp3, обложки и `playlist.json`; приложение подтягивает его при запуске и при возврате из фона и добавляет эти треки после встроенных.
+- Первый запуск: `cd cloud && npm install && npx wrangler login && ./setup.sh`. Скрипт создаст бакет, задеплоит Worker, сгенерирует токен (`cloud/.secrets`, не коммитить) и пропишет адрес в `.env` (`VITE_CLOUD_URL`).
+- Треки добавляет Telegram-агент по инструкции `cloud/AGENT.md`.
+- Локально: `cd cloud && npx wrangler dev` + `.env.local` с `VITE_CLOUD_URL=http://127.0.0.1:8787`.
+
 ## Обновления
 - Каждый push в `main` → GitHub Actions собирает подписанный APK и публикует релиз `v1.0.<номер сборки>` с файлом `kawaii-radio.apk` (текст коммита = список изменений).
 - Приложение при запуске проверяет последний релиз и показывает панель «Yangi versiya chiqdi!»: загрузка с прогрессом → установщик Android.

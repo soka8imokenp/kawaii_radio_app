@@ -149,7 +149,7 @@ function EmptySaved({ premium, onPremium }: { premium: boolean; onPremium: () =>
 export function TopPanel({ tab, onTab, onPremium }: { tab: Tab; onTab: (t: Tab) => void; onPremium: () => void }) {
   const s = usePlayer();
   const t = playlist[s.index];
-  const list = useMemo(() => tabList(tab, s.saved), [tab, s.saved]);
+  const list = useMemo(() => tabList(tab, s.saved), [tab, s.saved, s.catalog]);
   return (
     <section className="relative z-20 shrink-0 overflow-hidden rounded-b-[30px] px-4 pb-2.5 pt-[max(12px,env(safe-area-inset-top))]"
       style={{ background: 'linear-gradient(180deg, #2c2e33 0%, #232428 60%, #1f2023 100%)', boxShadow: '0 12px 26px rgba(0,0,0,0.38), inset 0 -1px 0 rgba(255,255,255,0.06)' }}>
