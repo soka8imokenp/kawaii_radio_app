@@ -4,9 +4,10 @@ const config: CapacitorConfig = {
   appId: 'uz.kawaii.radio.kr01',
   appName: 'Kawaii Radio',
   webDir: 'dist',
-  backgroundColor: '#e8e9ee',
+  backgroundColor: '#000000',
   plugins: {
-    SplashScreen: { launchShowDuration: 600, backgroundColor: '#c9cbd3', showSpinner: false },
+    // the web Splash hides it as soon as it is on screen; the duration is only a safety net
+    SplashScreen: { launchShowDuration: 4000, launchAutoHide: true, launchFadeOutDuration: 200, backgroundColor: '#000000', showSpinner: false },
   },
 };
 

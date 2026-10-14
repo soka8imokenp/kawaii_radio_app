@@ -1,8 +1,8 @@
 import { motion } from 'motion/react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { player, usePlayer } from '../audio/player';
 import { press } from '../lib/feedback';
-import { appVersion } from '../lib/updater';
+import { appVersion, checkForUpdate, type UpdateInfo } from '../lib/updater';
 import { Icon, Led } from '../components/parts';
 
 /** Two-position hardware switch. */
@@ -34,8 +34,28 @@ function Row({ title, sub, children }: { title: string; sub?: string; children: 
   );
 }
 
-export function Profile({ onPremium }: { onPremium: () => void }) {
+type Check = 'idle' | 'checking' | 'latest' | 'error';
+const CHECK_TEXT: Record<Check, string> = {
+  idle: 'Yangi versiya bormi, tekshiring',
+  checking: 'Tekshirilmoqda…',
+  latest: "Sizda eng so'nggi versiya",
+  error: "Tekshirib bo'lmadi, internetni tekshiring",
+};
+
+export function Profile({ onPremium, onUpdate }: { onPremium: () => void; onUpdate: (u: UpdateInfo) => void }) {
   const s = usePlayer();
+  const [check, setCheck] = useState<Check>('idle');
+  const runCheck = async () => {
+    if (check === 'checking') return;
+    press();
+    setCheck('checking');
+    try {
+      const u = await checkForUpdate();
+      if (u) { setCheck('idle'); onUpdate(u); } else setCheck('latest');
+    } catch {
+      setCheck('error');
+    }
+  };
   return (
     <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4 pt-[max(16px,env(safe-area-inset-top))]">
       <header className="flex items-center gap-4">
@@ -81,8 +101,15 @@ export function Profile({ onPremium }: { onPremium: () => void }) {
           <button onClick={() => { press(); window.open('https://kawaii.uz/login', '_blank'); }} className="raised shrink-0 rounded-[12px] px-4 py-2 text-[12px] font-bold uppercase">Kirish</button>
         </Row>
         <div className="groove-h" />
-        <Row title="Ilova haqida" sub={`Kawaii Radio KR-01 · v${appVersion()}`}>
-          <Led on color="var(--led-green)" />
+        <Row title="Ilova haqida" sub="Kawaii Radio KR-01">
+          <span className="font-pixel text-[15px] text-[var(--ink)]">v{appVersion()}</span>
+        </Row>
+        <div className="groove-h" />
+        <Row title="Yangilanishlar" sub={CHECK_TEXT[check]}>
+          <button onClick={runCheck} className="raised flex shrink-0 items-center gap-2 rounded-[12px] px-3.5 py-2 text-[12px] font-bold uppercase">
+            <Led on={check !== 'idle'} color={check === 'error' ? 'var(--led-red)' : 'var(--led-green)'} pulse={check === 'checking' ? 1.6 : 1} />
+            {check === 'checking' ? 'Kuting' : 'Tekshirish'}
+          </button>
         </Row>
       </div>
     </div>

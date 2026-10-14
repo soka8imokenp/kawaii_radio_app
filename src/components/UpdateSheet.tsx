@@ -1,10 +1,10 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { press } from '../lib/feedback';
-import { downloadUpdate, installUpdate, type UpdateInfo } from '../lib/updater';
+import { canInstall, downloadUpdate, installUpdate, openInstallSettings, type UpdateInfo } from '../lib/updater';
 import { Key, Led } from './parts';
 
-type Phase = 'ready' | 'downloading' | 'done' | 'error';
+type Phase = 'ready' | 'downloading' | 'permission' | 'done' | 'error';
 const BLOCKS = 22;
 const mb = (b: number) => (b / 1_048_576).toFixed(1);
 
@@ -42,23 +42,48 @@ export function UpdateSheet({ info, onClose }: { info: UpdateInfo | null; onClos
   const [done, setDone] = useState(0);
   const [total, setTotal] = useState(0);
   const [uri, setUri] = useState('');
+  const [error, setError] = useState('');
   const progress = total ? Math.min(1, done / total) : 0;
+
+  // a fresh panel for every release shown
+  useEffect(() => { if (info) { setPhase('ready'); setDone(0); setTotal(0); setError(''); } }, [info?.build]);
+
+  const install = async (file: string) => {
+    try {
+      const r = await installUpdate(file);
+      setPhase(r === 'permission' ? 'permission' : 'done');
+    } catch (e) {
+      setError((e as Error).message || "O'rnatuvchini ochib bo'lmadi");
+      setPhase('error');
+    }
+  };
 
   const start = async () => {
     if (!info) return;
     press();
     setPhase('downloading');
+    setError('');
     setDone(0);
     setTotal(info.size);
     try {
       const file = await downloadUpdate(info, (d, t) => { setDone(d); setTotal(t); });
       setUri(file);
-      setPhase('done');
-      await installUpdate(file).catch(() => setPhase('done'));
-    } catch {
+      await install(file);
+    } catch (e) {
+      setError((e as Error).message || 'Internet aloqasini tekshiring');
       setPhase('error');
     }
   };
+
+  // back from the "Install unknown apps" settings page: continue by itself once allowed
+  useEffect(() => {
+    if (phase !== 'permission') return;
+    const onVisible = async () => {
+      if (document.visibilityState === 'visible' && (await canInstall())) install(uri);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [phase, uri]);
 
   return (
     <AnimatePresence>
@@ -75,12 +100,12 @@ export function UpdateSheet({ info, onClose }: { info: UpdateInfo | null; onClos
             <div className="mt-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Led on color={phase === 'error' ? 'var(--led-red)' : 'var(--led-green)'} pulse={phase === 'downloading' ? 1.6 : 1} />
-                <span className="micro">{phase === 'error' ? 'Xatolik' : phase === 'done' ? 'Tayyor' : 'Yangilanish'}</span>
+                <span className="micro">{phase === 'error' ? 'Xatolik' : phase === 'done' ? 'Tayyor' : phase === 'permission' ? 'Ruxsat kerak' : 'Yangilanish'}</span>
               </div>
               <span className="micro text-[10px] text-[var(--ink-soft)]">KR-01 · OTA</span>
             </div>
             <div className="mt-2 text-[22px] font-extrabold leading-tight text-[var(--ink)]">
-              {phase === 'done' ? "O'rnatishga tayyor!" : phase === 'error' ? 'Yuklab bo\'lmadi' : 'Yangi versiya chiqdi!'}
+              {phase === 'done' ? "O'rnatishga tayyor!" : phase === 'error' ? "Yangilab bo'lmadi" : phase === 'permission' ? 'Bir qadam qoldi' : 'Yangi versiya chiqdi!'}
             </div>
 
             {/* LCD with version readout, cassette and pixel progress */}
@@ -108,6 +133,16 @@ export function UpdateSheet({ info, onClose }: { info: UpdateInfo | null; onClos
               </div>
             </div>
 
+            {phase === 'permission' ? (
+              <div className="tray mt-3 rounded-[18px] px-4 py-3 text-[13.5px] leading-snug text-[var(--ink)]">
+                Android ilovaga yangilanishni o'rnatishga ruxsat so'rayapti. «Ruxsat berish»ni bosing, ochilgan oynada
+                <b> «Shu manbadan ruxsat berish»</b> ni yoqing va orqaga qayting: o'rnatish o'zi davom etadi.
+              </div>
+            ) : null}
+            {phase === 'error' && error ? (
+              <div className="tray mt-3 rounded-[18px] px-4 py-3 text-[13px] leading-snug text-[var(--led-red)]">{error}</div>
+            ) : null}
+
             {/* what's new */}
             <div className="tray mt-3 rounded-[18px] px-4 py-3">
               <div className="micro text-[10px] text-[var(--ink-soft)]">Nimalar yangi</div>
@@ -127,9 +162,15 @@ export function UpdateSheet({ info, onClose }: { info: UpdateInfo | null; onClos
                 <span className="micro">{phase === 'downloading' ? 'Kuting…' : 'Keyinroq'}</span>
               </Key>
               <AnimatePresence mode="wait" initial={false}>
-                {phase === 'done' ? (
+                {phase === 'permission' ? (
+                  <motion.div key="perm" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }}>
+                    <Key cap className="h-[48px] w-full gap-2 rounded-[15px]" onPress={() => { press(); openInstallSettings().catch((e) => { setError(String(e?.message ?? e)); setPhase('error'); }); }}>
+                      <Led on color="var(--led-red)" pulse={1.4} /><span className="micro">Ruxsat berish</span>
+                    </Key>
+                  </motion.div>
+                ) : phase === 'done' ? (
                   <motion.div key="install" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }}>
-                    <Key cap className="h-[48px] w-full gap-2 rounded-[15px]" onPress={() => installUpdate(uri)}>
+                    <Key cap className="h-[48px] w-full gap-2 rounded-[15px]" onPress={() => { press(); install(uri); }}>
                       <Led on /><span className="micro">O'rnatish</span>
                     </Key>
                   </motion.div>

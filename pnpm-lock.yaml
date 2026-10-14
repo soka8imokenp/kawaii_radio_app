@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@capacitor-community/file-opener':
-        specifier: ^8.0.1
-        version: 8.0.1(@capacitor/core@8.5.3)
       '@capacitor/app':
         specifier: ^8.1.2
         version: 8.1.2(@capacitor/core@8.5.3)
@@ -92,12 +89,6 @@ importers:
         version: 8.3.4(@types/node@26.6.5)(jiti@2.7.0)
 
 packages:
-
-  '@capacitor-community/file-opener@8.0.1':
-    resolution: {integrity: sha512-kiPybhOlDUMmt5LLsulxLZC/j4gHcPuvKsdbCZTDsQTShGc2G5SNqalYSJUFUfNYl3gQSF7jnNPRlfD5JnSeaw==}
-    engines: {node: '>=16.0.0', npm: '>=8.0.0'}
-    peerDependencies:
-      '@capacitor/core': '>=8.0.0'
 
   '@capacitor/android@8.5.3':
     resolution: {integrity: sha512-ilH4gSSz3DrketMkzDVAvY9JsWJ//rCQnECLTdcFRO7xXDogwAbUvQAnIAbiqefwV/D1xfjEL4Gw1MJXEcaA9g==}
@@ -1196,10 +1187,6 @@ packages:
     resolution: {integrity: sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g==}
 
 snapshots:
-
-  '@capacitor-community/file-opener@8.0.1(@capacitor/core@8.5.3)':
-    dependencies:
-      '@capacitor/core': 8.5.3
 
   '@capacitor/android@8.5.3(@capacitor/core@8.5.3)':
     dependencies:
