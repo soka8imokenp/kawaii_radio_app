@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Bulk upload of a folder of audio files to the Kawaii Radio cloud.
- * Title, artist, duration and cover come from the files' own tags; tracks already in the cloud or
- * built into the app (src/data/playlist.ts) are skipped, so re-running it is safe.
+ * Title, artist, duration and cover come from the files' own tags; tracks already in the cloud
+ * are skipped, so re-running it is safe.
  *
  *   node cloud/import.mjs <folder> [--dry] [--ost list.txt] [--skip "Artist - Title" ...]
  *
@@ -40,9 +40,7 @@ const AUTH = { Authorization: `Bearer ${secrets.KAWAII_UPLOAD_TOKEN}` };
 
 /* ---------- what is already there ---------- */
 const cloud = (await (await fetch(`${BASE}/playlist.json`)).json()).tracks;
-const builtinSrc = readFileSync(join(here, '../src/data/playlist.ts'), 'utf8');
-const builtin = [...builtinSrc.matchAll(/title: '([^']*)', artist: '([^']*)'/g)].map((m) => ({ title: m[1], artist: m[2] }));
-const have = new Set([...cloud, ...builtin].map((t) => norm(t.title) + '|' + norm(t.artist.split(/,| feat\.? | & /i)[0])));
+const have = new Set(cloud.map((t) => norm(t.title) + '|' + norm(t.artist.split(/,| feat\.? | & /i)[0])));
 
 /* ---------- go ---------- */
 const files = readdirSync(folder).filter((f) => AUDIO.has(extname(f).toLowerCase())).sort();

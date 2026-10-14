@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One-time setup of the Kawaii Radio cloud (run after `npx wrangler login`):
-# R2 bucket → upload token → Worker deploy → default cover → app .env + .secrets for the agent.
+# R2 bucket → upload token → Worker deploy → default cover → .secrets for the agent.
+# The Worker address the app talks to is CLOUD_URL in native/shared/.../data/Catalog.kt.
 # Safe to re-run: the existing token in .secrets is kept.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -34,7 +35,6 @@ cat > .secrets <<EOF
 KAWAII_BASE_URL=$URL
 KAWAII_UPLOAD_TOKEN=$TOKEN
 EOF
-echo "VITE_CLOUD_URL=$URL" > ../.env
 
 echo
 echo "Done: $URL"

@@ -17,7 +17,6 @@ jobs:
     env:
       VERSION_CODE: ${{ github.run_number }}
       VERSION_NAME: 1.0.${{ github.run_number }}
-      VITE_APP_VERSION: 1.0.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,24 +25,13 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm exec cap sync android
+      - uses: gradle/actions/setup-gradle@v4
 
       - name: Assemble signed release APK
-        working-directory: android
-        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+        working-directory: native
+        run: chmod +x gradlew && ./gradlew :androidApp:assembleRelease --no-daemon
 
-      - run: cp android/app/build/outputs/apk/release/app-release.apk kawaii-radio.apk
+      - run: cp native/androidApp/build/outputs/apk/release/androidApp-release.apk kawaii-radio.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
