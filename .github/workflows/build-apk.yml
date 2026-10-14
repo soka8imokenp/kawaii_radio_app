@@ -5,6 +5,7 @@ name: Build & release APK
 on:
   push:
     branches: [main]
+    paths-ignore: ['cloud/**']   # cloud-only changes don't need a new APK
   workflow_dispatch:
 
 permissions:
