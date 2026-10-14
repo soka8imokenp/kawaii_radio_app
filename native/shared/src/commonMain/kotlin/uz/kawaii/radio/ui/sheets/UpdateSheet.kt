@@ -143,7 +143,7 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
             BasicText(
                 when (phase) { Phase.Done -> "O'rnatishga tayyor!"; Phase.Error -> "Yangilab bo'lmadi"; Phase.Permission -> "Bir qadam qoldi"; else -> "Yangi versiya chiqdi!" },
                 Modifier.padding(top = 8.dp),
-                style = T.inter(22.sp, FontWeight.ExtraBold, K.ink, lh = 27.sp),
+                style = T.pixel(24.sp, K.ink, weight = FontWeight.SemiBold, lh = 28.sp),
             )
 
             // LCD with version readout, cassette and pixel progress
@@ -185,14 +185,14 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
                 BasicText(
                     "Android ilovaga yangilanishni o'rnatishga ruxsat so'rayapti. «Ruxsat berish»ni bosing, ochilgan oynada «Shu manbadan ruxsat berish»ni yoqing va orqaga qayting: o'rnatish o'zi davom etadi.",
                     Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
-                    style = T.inter(13.5.sp, color = K.ink, lh = 18.sp),
+                    style = T.pixel(13.5.sp, K.ink, lh = 18.sp),
                 )
             }
             if (phase == Phase.Error && error.isNotEmpty()) {
                 BasicText(
                     error,
                     Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
-                    style = T.inter(13.sp, color = K.ledRed, lh = 17.sp),
+                    style = T.pixel(13.sp, K.ledRed, lh = 17.sp),
                 )
             }
 
@@ -205,7 +205,7 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
                         LaunchedEffect(u.build) { delay(150L + i * 60L); a.animateTo(1f, tween(250)) }
                         Row(Modifier.graphicsLayer { alpha = a.value; translationX = (a.value - 1) * 8 * density }) {
                             Box(Modifier.padding(top = 6.dp).size(5.dp).background(K.ink, RoundedCornerShape(1.dp)))
-                            BasicText(n, Modifier.padding(start = 8.dp), style = T.inter(13.5.sp, color = K.ink, lh = 18.sp))
+                            BasicText(n, Modifier.padding(start = 8.dp), style = T.pixel(13.5.sp, K.ink, lh = 18.sp))
                         }
                     }
                 }
@@ -253,7 +253,7 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
                 BasicText(
                     "Android o'rnatish oynasida «O'rnatish» tugmasini bosing",
                     Modifier.padding(top = 8.dp).fillMaxWidth(),
-                    style = T.inter(11.5.sp, color = K.inkSoft).copy(textAlign = TextAlign.Center),
+                    style = T.pixel(11.5.sp, K.inkSoft).copy(textAlign = TextAlign.Center),
                 )
             }
         }

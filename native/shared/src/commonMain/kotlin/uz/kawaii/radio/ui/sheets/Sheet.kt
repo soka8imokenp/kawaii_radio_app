@@ -127,9 +127,9 @@ fun Sheet(open: Boolean, onClose: () -> Unit, title: String, content: @Composabl
             Box(Modifier.size(56.dp, 6.dp).tray(CircleShape))
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            BasicText(title.uppercase(), Modifier.weight(1f), style = T.inter(13.sp, FontWeight.Bold, K.ink, ls = 1.8.sp).copy(shadow = emboss()))
+            BasicText(title.uppercase(), Modifier.weight(1f), style = T.pixel(16.sp, K.ink, ls = 1.6.sp, weight = FontWeight.SemiBold).copy(shadow = emboss()))
             Box(Modifier.raised(CircleShape).pressClick(onClick = onClose).padding(horizontal = 12.dp, vertical = 4.dp)) {
-                BasicText("YOPISH", style = T.inter(12.sp, FontWeight.Bold, K.ctlInk, ls = 0.6.sp).copy(shadow = emboss()))
+                BasicText("YOPISH", style = T.micro(11.sp).copy(shadow = emboss()))
             }
         }
         GrooveH(Modifier.padding(horizontal = 20.dp))

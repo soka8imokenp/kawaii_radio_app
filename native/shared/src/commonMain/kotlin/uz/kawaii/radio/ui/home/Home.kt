@@ -141,7 +141,7 @@ fun Home(ui: UiState) {
     val changeTab = { next: Tab ->
         tab = next
         val list = tabList(next, tracks, saved)
-        if (list.isNotEmpty() && list.none { it.t.id == t.id }) store.select(list[0].t.id)
+        if (list.isNotEmpty() && list.none { it.t.id == t.id }) store.play(list[0].t.id, list.map { it.t.id })
     }
 
     val density = LocalDensity.current.density
@@ -212,7 +212,7 @@ fun Home(ui: UiState) {
                             Screw()
                             Tuner(
                                 modifier = Modifier.weight(1f),
-                                onStep = { d -> store.select(at(d).t.id) },
+                                onStep = { d -> store.play(at(d).t.id, band.map { it.t.id }) },
                                 preview = { d -> at(d).t.title },
                             )
                             Screw()
@@ -228,7 +228,7 @@ fun Home(ui: UiState) {
                         Modifier.padding(top = 8.dp).fillMaxWidth().tray(RoundedCornerShape(20.dp)).padding(4.dp),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
-                        Key(RoundedCornerShape(15.dp), Modifier.weight(1f).height(40.dp), onPress = { ui.info = true }) {
+                        Key(RoundedCornerShape(15.dp), Modifier.weight(1f).height(40.dp), onPress = { ui.info = t.id }) {
                             Px(Glyph.INFO, 19.dp, K.ctlInk)
                             BasicText("TAVSIF", style = T.micro())
                         }

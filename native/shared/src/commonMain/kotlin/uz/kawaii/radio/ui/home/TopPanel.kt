@@ -136,7 +136,7 @@ fun TopPanel(
     Box(
         modifier.fillMaxWidth()
             .dropShadow(PanelShape, Shadow(26.dp, Color(0f, 0f, 0f, 0.38f), offset = DpOffset(0.dp, 12.dp)))
-            .background(Brush.verticalGradient(0f to Color(0xFF2C2E33), 0.6f to Color(0xFF232428), 1f to Color(0xFF1F2023)), PanelShape)
+            .background(Brush.verticalGradient(0f to K.p.panelTop, 0.6f to K.p.panelMid, 1f to K.p.panelBottom), PanelShape)
             .innerShadow(PanelShape, Shadow(0.dp, Color(1f, 1f, 1f, 0.06f), offset = DpOffset(0.dp, (-1).dp)))
             .clip(PanelShape),
     ) {
@@ -258,7 +258,7 @@ private fun Covers(list: List<Entry>, currentId: String, playing: Boolean, k: Fl
                     onDragEnd = {
                         if (abs(drag) >= 40.dp.toPx()) {
                             val next = centre + if (drag < 0) 1 else -1
-                            if (next in list.indices) { sound.press(); store.select(list[next].t.id) }
+                            if (next in list.indices) { sound.press(); store.play(list[next].t.id, list.map { it.t.id }) }
                         }
                     },
                 )
@@ -285,7 +285,7 @@ private fun Covers(list: List<Entry>, currentId: String, playing: Boolean, k: Fl
                             this.alpha = alpha
                             cameraDistance = 700f * density.density / 72f
                         }
-                        .tap(onClick = { sound.press(); store.select(e.t.id) }),
+                        .tap(onClick = { sound.press(); store.play(e.t.id, list.map { it.t.id }) }),
                 ) {
                     CoverTile(e.t.coverArt, isActive)
                     if (isActive) {
@@ -398,11 +398,11 @@ private fun EmptySaved(premium: Boolean, onPremium: () -> Unit, k: Float) {
                 }
             }
         }
-        BasicText(if (premium) "Hali saqlangan qo'shiq yo'q" else "Kawaii Pass imkoniyati", style = T.inter(14.sp, FontWeight.SemiBold, Color.White))
+        BasicText(if (premium) "Hali saqlangan qo'shiq yo'q" else "Kawaii Pass imkoniyati", style = T.pixel(14.sp, Color.White, weight = FontWeight.SemiBold))
         BasicText(
             if (premium) "«Saqlash» tugmasi bilan qo'shiqlarni ilova ichida saqlang." else "Sevimli qo'shiqlarni ilova ichida saqlab, internetsiz tinglang.",
             Modifier.widthIn(max = 250.dp),
-            style = T.inter(12.sp, color = K.tabOff, lh = 16.sp).copy(textAlign = TextAlign.Center),
+            style = T.pixel(12.sp, K.tabOff, lh = 16.sp).copy(textAlign = TextAlign.Center),
         )
         if (!premium) {
             Box(
@@ -412,7 +412,7 @@ private fun EmptySaved(premium: Boolean, onPremium: () -> Unit, k: Float) {
                     .innerShadow(CircleShape, Shadow(0.dp, Color(1f, 1f, 1f, 0.6f), offset = DpOffset(0.dp, 1.dp)))
                     .pressClick(onClick = onPremium)
                     .padding(horizontal = 16.dp, vertical = 6.dp),
-            ) { BasicText("Kawaii Pass", style = T.inter(12.sp, FontWeight.Bold, Color(0xFF3A2A05))) }
+            ) { BasicText("Kawaii Pass", style = T.pixel(13.sp, Color(0xFF3A2A05), weight = FontWeight.SemiBold)) }
         }
     }
 }

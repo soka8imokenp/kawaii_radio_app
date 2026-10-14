@@ -107,7 +107,7 @@ fun Modifier.housing(shape: Shape? = null): Modifier = (if (shape != null) this.
     val cell = 12.dp.toPx().coerceAtLeast(2f)
     val n = kotlin.math.ceil(cell).toInt()
     val tile = ImageBitmap(n, n)
-    Canvas(tile).drawCircle(Offset(n * 0.3f, n * 0.4f), 1.dp.toPx(), Paint().apply { color = Color(1f, 1f, 1f, 0.35f) })
+    Canvas(tile).drawCircle(Offset(n * 0.3f, n * 0.4f), 1.dp.toPx(), Paint().apply { color = K.mould })
     val dots = ShaderBrush(ImageShader(tile, TileMode.Repeated, TileMode.Repeated))
     val base = Brush.verticalGradient(listOf(K.base2, K.base))
     onDrawBehind {

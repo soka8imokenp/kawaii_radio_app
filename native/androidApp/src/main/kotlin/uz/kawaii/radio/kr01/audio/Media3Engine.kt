@@ -46,11 +46,16 @@ class Media3Engine(context: Context) : AudioEngine {
         controller?.let(block) ?: pending.add(block)
     }
 
+    private var queueIds: List<String> = emptyList()
+
     private fun publish() {
         val c = controller ?: return
+        val ids = List(c.mediaItemCount) { c.getMediaItemAt(it).mediaId }
+        if (ids != queueIds) queueIds = ids
         val playing = c.playWhenReady && (c.playbackState == Player.STATE_READY || c.playbackState == Player.STATE_BUFFERING)
         _state.value = EngineState(
             id = c.currentMediaItem?.mediaId,
+            queue = queueIds,
             playing = playing,
             durationMs = c.duration.takeIf { it > 0 } ?: 0,
         )
@@ -74,8 +79,9 @@ class Media3Engine(context: Context) : AudioEngine {
     override fun setQueue(items: List<QueueItem>, startIndex: Int) = run { c ->
         c.setMediaItems(items.map(::item), startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0)), 0)
         c.prepare()
-        // show the restored song right away, before anything plays
-        _state.value = _state.value.copy(id = items.getOrNull(startIndex)?.id)
+        // show the restored song (and queue) right away, before the player reports back
+        queueIds = items.map { it.id }
+        _state.value = _state.value.copy(id = items.getOrNull(startIndex)?.id, queue = queueIds)
     }
 
     /**
@@ -127,4 +133,21 @@ class Media3Engine(context: Context) : AudioEngine {
         c.seekToPrevious()
         c.play()
     }
+
+    override fun setShuffle(on: Boolean) = run { it.shuffleModeEnabled = on }
+
+    override fun insertNext(item: QueueItem) = run { c ->
+        val q = item
+        // move it if it is already queued, so the song is never listed twice
+        val existing = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == q.id }
+        val target = (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount)
+        when {
+            existing == c.currentMediaItemIndex -> Unit
+            existing != null -> c.moveMediaItem(existing, if (existing < target) target - 1 else target)
+            else -> c.addMediaItem(target, this.item(q))
+        }
+        publish()
+    }
+
+    override fun setVolume(v: Float) = run { it.volume = v.coerceIn(0f, 1f) }
 }

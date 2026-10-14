@@ -12,10 +12,13 @@ class KawaiiApp : Application() {
     lateinit var store: RadioStore
         private set
     val ui = UiState()
+    lateinit var platform: AndroidPlatform
+        private set
 
     override fun onCreate() {
         super.onCreate()
-        store = RadioStore(AndroidPlatform(this), scope)
+        platform = AndroidPlatform(this)
+        store = RadioStore(platform, scope)
         scope.launch { store.start() }
     }
 }

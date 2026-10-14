@@ -1,10 +1,17 @@
 package uz.kawaii.radio.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,6 +23,8 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,8 +38,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.launch
 import uz.kawaii.radio.RadioStore
+import uz.kawaii.radio.ThemeMode
 import uz.kawaii.radio.data.UpdateInfo
 import uz.kawaii.radio.data.checkForUpdate
 import uz.kawaii.radio.data.isSkipped
@@ -38,22 +47,33 @@ import uz.kawaii.radio.data.skipBuild
 import uz.kawaii.radio.ui.home.Home
 import uz.kawaii.radio.ui.kit.LocalSound
 import uz.kawaii.radio.ui.kit.housing
+import uz.kawaii.radio.ui.sheets.ArtistSheet
+import uz.kawaii.radio.ui.sheets.AvatarSheet
 import uz.kawaii.radio.ui.sheets.InfoSheet
 import uz.kawaii.radio.ui.sheets.PremiumSheet
+import uz.kawaii.radio.ui.sheets.SongSheet
 import uz.kawaii.radio.ui.sheets.UpdateSheet
+import uz.kawaii.radio.ui.theme.Chalk
+import uz.kawaii.radio.ui.theme.Graphite
 import uz.kawaii.radio.ui.theme.K
 import uz.kawaii.radio.ui.theme.LocalFonts
 import uz.kawaii.radio.ui.theme.rememberFonts
 
-enum class Page { Home, Liked, Profile }
+enum class Page { Home, Search, Liked, Profile }
 
 val LocalStore = staticCompositionLocalOf<RadioStore> { error("store not provided") }
+val LocalUi = staticCompositionLocalOf<UiState> { error("ui not provided") }
 
 /** Screen-level state the system back button can unwind. */
 class UiState {
     var page by mutableStateOf(Page.Home)
-    var info by mutableStateOf(false)
+    /** Song whose "Tavsif" sheet is open. */
+    var info by mutableStateOf<String?>(null)
+    /** Song whose card (dates, plays, actions) is open. */
+    var song by mutableStateOf<String?>(null)
     var premium by mutableStateOf(false)
+    var avatarPicker by mutableStateOf(false)
+    var artistPicker by mutableStateOf(false)
     var update by mutableStateOf<UpdateInfo?>(null)
     var updateBusy by mutableStateOf(false)
     /** Set by Home while its lyrics drawer is open; closes it. */
@@ -62,8 +82,11 @@ class UiState {
     /** True when something was closed, false when the app should go to the background. */
     fun back(onSkipUpdate: (UpdateInfo) -> Unit): Boolean {
         update?.let { if (!updateBusy) { onSkipUpdate(it); update = null }; return true }
-        if (info) { info = false; return true }
+        if (info != null) { info = null; return true }
+        if (song != null) { song = null; return true }
         if (premium) { premium = false; return true }
+        if (avatarPicker) { avatarPicker = false; return true }
+        if (artistPicker) { artistPicker = false; return true }
         closeDrawer?.let { it(); return true }
         if (page != Page.Home) { page = Page.Home; return true }
         return false
@@ -74,10 +97,17 @@ private val EaseOutQuint = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
 @Composable
 fun KawaiiApp(store: RadioStore, ui: UiState) {
+    // chalk or graphite, before anything reads a colour
+    val mode by store.theme.collectAsState()
+    val systemDark = isSystemInDarkTheme()
+    val dark = mode == ThemeMode.DARK || (mode == ThemeMode.AUTO && systemDark)
+    K.p = if (dark) Graphite else Chalk
+
     CompositionLocalProvider(
         LocalFonts provides rememberFonts(),
         LocalSound provides store.platform.sound,
         LocalStore provides store,
+        LocalUi provides ui,
     ) {
         var booted by remember { mutableStateOf(false) }
         var splashGone by remember { mutableStateOf(false) }
@@ -88,6 +118,11 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
             val u = runCatching { checkForUpdate(store.platform) }.getOrNull()
             if (u != null && !isSkipped(store.platform, u.build)) ui.update = u
         }
+
+        // the radio has a dark panel under the status bar; the other pages are plastic all the way up
+        val onHome = ui.page == Page.Home
+        val strip by animateColorAsState(if (onHome) K.bar else K.base2, tween(220))
+        SideEffect { store.platform.setSystemBarIcons(statusDark = splashGone && !onHome && !dark, navDark = !dark) }
 
         Box(Modifier.fillMaxSize().background(K.page), contentAlignment = Alignment.TopCenter) {
             val enter = remember { Animatable(0f) }
@@ -101,16 +136,19 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
                     }
                     .housing(),
             ) {
-                // the dark status bar strip of the original (light icons over #2c2e33)
-                Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(K.bar))
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    Pages(ui)
+                Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(strip))
+                Box(Modifier.weight(1f).fillMaxWidth()) { Pages(ui) }
+                AnimatedVisibility(!onHome, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    MiniPlayer(onOpen = { ui.page = Page.Home })
                 }
                 NavBar(ui.page) { ui.page = it }
             }
 
-            InfoSheet(open = ui.info, onClose = { ui.info = false })
+            SongSheet(id = ui.song, onClose = { ui.song = null })
+            InfoSheet(id = ui.info, onClose = { ui.info = null })
             PremiumSheet(open = ui.premium, onClose = { ui.premium = false })
+            AvatarSheet(open = ui.avatarPicker, onClose = { ui.avatarPicker = false })
+            ArtistSheet(open = ui.artistPicker, onClose = { ui.artistPicker = false })
             UpdateSheet(
                 info = ui.update,
                 onBusy = { ui.updateBusy = it },
@@ -142,6 +180,7 @@ private fun Pages(ui: UiState) {
         ) {
             when (p) {
                 Page.Home -> Home(ui)
+                Page.Search -> Search(active)
                 Page.Liked -> Liked(onOpenRadio = { ui.page = Page.Home })
                 Page.Profile -> Profile(ui)
             }

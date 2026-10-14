@@ -13,7 +13,9 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.withContext
 import uz.kawaii.radio.KeyValueStore
 import uz.kawaii.radio.Platform
@@ -94,6 +96,68 @@ class AndroidPlatform(private val context: Context) : Platform {
             }
         }
         return out
+    }
+
+    override suspend fun pixelCover(uri: String, size: Int): ImageBitmap? = withContext(Dispatchers.Default) {
+        if (uri.isEmpty()) return@withContext null
+        val req = ImageRequest.Builder(context).data(uri).size(size * 2).allowHardware(false).build()
+        val res = SingletonImageLoader.get(context).execute(req) as? SuccessResult ?: return@withContext null
+        val src = res.image.toBitmap()
+        // centre-crop to a square, then shrink to the LCD grid
+        val side = minOf(src.width, src.height)
+        val square = Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side).scale(size, size)
+        val px = IntArray(size * size).also { square.getPixels(it, 0, size, 0, 0, size, size) }
+        // Bayer 4×4 ordered dither with a contrast boost: "on" pixels become opaque white (tinted when drawn)
+        val bayer = intArrayOf(0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5)
+        for (y in 0 until size) for (x in 0 until size) {
+            val p = px[y * size + x]
+            var l = (0.299f * ((p shr 16) and 255) + 0.587f * ((p shr 8) and 255) + 0.114f * (p and 255)) / 255f
+            l = ((l - 0.5f) * 1.35f + 0.5f).coerceIn(0f, 1f)
+            val on = l < (bayer[(y % 4) * 4 + (x % 4)] + 0.5f) / 16f
+            px[y * size + x] = if (on) -0x1 else 0
+        }
+        Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888).asImageBitmap()
+    }
+
+    /** Set by MainActivity while it is alive: status bar styling and the photo picker need a window. */
+    var activity: MainActivity? = null
+    private var picking: CompletableDeferred<Uri?>? = null
+
+    override fun setSystemBarIcons(statusDark: Boolean, navDark: Boolean) {
+        val a = activity ?: return
+        a.runOnUiThread {
+            WindowCompat.getInsetsController(a.window, a.window.decorView).apply {
+                isAppearanceLightStatusBars = statusDark
+                isAppearanceLightNavigationBars = navDark
+            }
+        }
+    }
+
+    private val avatarFile = File(context.filesDir, "avatar.jpg")
+
+    override fun avatarPhoto(): String? = avatarFile.takeIf { it.length() > 0 }?.let { Uri.fromFile(it).toString() + "?v=" + it.lastModified() }
+
+    override suspend fun pickAvatarPhoto(): String? {
+        val a = activity ?: return null
+        val wait = CompletableDeferred<Uri?>().also { picking = it }
+        a.pickPhoto()
+        val uri = wait.await() ?: return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val req = ImageRequest.Builder(context).data(uri).size(384).allowHardware(false).build()
+                val res = SingletonImageLoader.get(context).execute(req) as? SuccessResult ?: return@runCatching null
+                val b = res.image.toBitmap()
+                val side = minOf(b.width, b.height)
+                val sq = Bitmap.createBitmap(b, (b.width - side) / 2, (b.height - side) / 2, side, side).scale(256, 256)
+                avatarFile.outputStream().use { sq.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                avatarPhoto()
+            }.getOrNull()
+        }
+    }
+
+    fun onPhotoPicked(uri: Uri?) {
+        picking?.complete(uri)
+        picking = null
     }
 
     private fun offlineFile(id: String) = File(offlineDir, id.filter { it.isLetterOrDigit() || it == '-' || it == '_' } + ".audio")

@@ -25,6 +25,17 @@ interface Platform {
     /** A tiny, already-blurred copy of the cover for the ambient glow behind the cover flow. */
     suspend fun glowBitmap(uri: String): ImageBitmap?
 
+    /** The cover as a 1-bit LCD bitmap (ordered dither), [size]×[size] pixels, ink on transparent. */
+    suspend fun pixelCover(uri: String, size: Int): ImageBitmap?
+
+    /** System bar icons: dark ones over light surfaces, light ones over dark surfaces. */
+    fun setSystemBarIcons(statusDark: Boolean, navDark: Boolean)
+
+    /** Lets the user pick a photo for the avatar; returns its local uri, or null when cancelled. */
+    suspend fun pickAvatarPhoto(): String?
+    /** The stored avatar photo, if any. */
+    fun avatarPhoto(): String?
+
     /** Keeps the song on the device so it plays offline; returns false when it could not be stored. */
     suspend fun saveOffline(trackId: String, uri: String): Boolean
     fun removeOffline(trackId: String)
@@ -58,14 +69,13 @@ data class QueueItem(
 data class EngineState(
     /** Id of the current song, null before anything is loaded. */
     val id: String? = null,
+    /** Ids in the play queue, in order. */
+    val queue: List<String> = emptyList(),
     val playing: Boolean = false,
     val durationMs: Long = 0,
 )
 
-/**
- * The background player (Media3 on Android). Its queue always mirrors the catalog, so queue
- * indices and catalog indices are the same thing.
- */
+/** The background player (Media3 on Android). Indices are positions in its play queue. */
 interface AudioEngine {
     val state: StateFlow<EngineState>
 
@@ -81,6 +91,11 @@ interface AudioEngine {
     fun seekTo(ms: Long)
     fun next()
     fun previous()
+    fun setShuffle(on: Boolean)
+    /** Puts a song right after the current one. */
+    fun insertNext(item: QueueItem)
+    /** 0..1, used by the sleep timer to fade out. */
+    fun setVolume(v: Float)
 }
 
 sealed interface InstallResult {

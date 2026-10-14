@@ -1,6 +1,12 @@
 package uz.kawaii.radio.ui.home
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import kotlinx.coroutines.delay
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -145,7 +151,13 @@ fun WaveLcd(t: Track, playing: Boolean, durationMs: Long, clock: State<Double>) 
             }
 
             // waveform: scrolls under a fixed centre playhead; drag to scrub
-            Waveform(peaks, clock, duration, tuning) { store.seek(it) }
+            // after the static of a station change, the cover flashes up as 1-bit pixel art for a moment
+            val pixel by produceState<ImageBitmap?>(null, t.coverArt) { value = store.platform.pixelCover(t.coverArt, 30) }
+            var card by remember { mutableStateOf(false) }
+            LaunchedEffect(t.id) { delay(950); card = true; delay(2400); card = false }
+            Crossfade(card && pixel != null && !tuning, animationSpec = tween(180)) { showCard ->
+                if (showCard) PixelCard(t, pixel) else Waveform(peaks, clock, duration, tuning) { store.seek(it) }
+            }
 
             Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(1.dp).drawBehind { drawRect(inkRule) })
             BoxWithConstraints(Modifier.padding(top = 6.dp).fillMaxWidth()) {
@@ -239,6 +251,25 @@ private fun Noise() {
         val c = Color(38, 46, 30, 120)
         for (y in 0 until 24) for (x in 0 until 120) {
             if (Random.nextFloat() < 0.3f) drawRect(c, Offset(x * cw, y * ch), Size(cw, ch))
+        }
+    }
+}
+
+/** 30×30 dithered cover on the LCD grid with the artist beside it. */
+@Composable
+private fun PixelCard(t: Track, bmp: ImageBitmap?) {
+    Row(Modifier.padding(top = 4.dp).fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (bmp != null) {
+            Canvas(Modifier.size(30.dp)) {
+                drawImage(
+                    bmp, dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()),
+                    filterQuality = FilterQuality.None, colorFilter = ColorFilter.tint(K.lcdInk),
+                )
+            }
+        }
+        Column(Modifier.padding(start = 10.dp).weight(1f)) {
+            BasicText(t.artist.uppercase(), style = T.pixel(13.sp, K.lcdInk, lh = 14.sp).copy(shadow = lcdShadow()), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            BasicText("♪ ${t.category.uppercase()} · ${t.bpm} BPM", style = T.pixel(11.sp, K.lcdInk.copy(alpha = 0.55f), lh = 13.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

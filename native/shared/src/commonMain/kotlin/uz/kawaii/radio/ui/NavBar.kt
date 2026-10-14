@@ -35,7 +35,7 @@ import uz.kawaii.radio.ui.theme.K
 import uz.kawaii.radio.ui.theme.T
 import uz.kawaii.radio.ui.theme.motionSpring
 
-private val ITEMS = listOf(Page.Home to "Asosiy", Page.Liked to "Sevimlilar", Page.Profile to "Profil")
+private val ITEMS = listOf(Page.Home to "Asosiy", Page.Search to "Qidiruv", Page.Liked to "Sevimli", Page.Profile to "Profil")
 
 /** Bottom navigation as a row of key caps in one moulded rim. */
 @Composable
@@ -62,6 +62,7 @@ fun NavBar(page: Page, onPage: (Page) -> Unit) {
                     Box(Modifier.alpha(if (active) 1f else 0.75f)) {
                         when (key) {
                             Page.Home -> Px(Glyph.RADIO, 20.dp, K.ctlInk)
+                            Page.Search -> Px(Glyph.SEARCH, 18.dp, K.ctlInk)
                             Page.Liked -> HeartIcon(false, K.ctlInk)
                             Page.Profile -> Px(Glyph.USER, 18.dp, K.ctlInk)
                         }
