@@ -11,6 +11,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -129,7 +131,8 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
         damping = 34f,
     ) {
         if (u == null) return@BaseSheet
-        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 18.dp)) {
+        // header and keys stay put; the middle scrolls, so the keys never slip below the screen
+        Column(Modifier.weight(1f, fill = false).fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 18.dp)) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Box(Modifier.size(48.dp, 5.dp).tray(CircleShape)) }
 
             Row(Modifier.padding(top = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -146,6 +149,7 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
                 style = T.pixel(24.sp, K.ink, weight = FontWeight.SemiBold, lh = 28.sp),
             )
 
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             // LCD with version readout, cassette and pixel progress
             Box(Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(22.dp)).padding(6.dp)) {
                 Column(
@@ -196,8 +200,8 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
                 )
             }
 
-            // what's new
-            Column(Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            // what's new (the permission hint takes its place, so the next step is obvious)
+            if (phase != Phase.Permission) Column(Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 12.dp)) {
                 BasicText("NIMALAR YANGI", style = T.micro(10.sp, K.inkSoft))
                 Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     u.notes.forEachIndexed { i, n ->
@@ -209,6 +213,8 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
                         }
                     }
                 }
+            }
+
             }
 
             // physical keys
