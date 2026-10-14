@@ -98,9 +98,11 @@ export async function downloadUpdate(u: UpdateInfo, onProgress: (done: number, t
     }
   } catch { /* not there yet */ }
 
+  // the Android downloader does not create missing folders (its `recursive` option is ignored)
+  await Filesystem.mkdir({ path: UPDATES_DIR, directory: Directory.Cache, recursive: true }).catch(() => { /* already there */ });
   const handle = await Filesystem.addListener('progress', (p) => onProgress(p.bytes, p.contentLength || u.size));
   try {
-    await Filesystem.downloadFile({ url: u.apkUrl, path, directory: Directory.Cache, progress: true, recursive: true });
+    await Filesystem.downloadFile({ url: u.apkUrl, path, directory: Directory.Cache, progress: true });
   } finally {
     handle.remove();
   }
