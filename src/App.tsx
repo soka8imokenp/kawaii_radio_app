@@ -14,7 +14,6 @@ const ORDER: Page[] = ['home', 'liked', 'profile'];
 export default function App() {
   const [booted, setBooted] = useState(false);
   const [page, setPage] = useState<Page>('home');
-  const [dir, setDir] = useState(1);
   const [info, setInfo] = useState(false);
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
@@ -27,10 +26,7 @@ export default function App() {
     return () => { alive = false; };
   }, [booted]);
 
-  const go = (p: Page) => {
-    setDir(ORDER.indexOf(p) > ORDER.indexOf(page) ? 1 : -1);
-    setPage(p);
-  };
+  const go = (p: Page) => setPage(p);
 
   return (
     <div className="flex h-full justify-center bg-[var(--page)]">
@@ -40,24 +36,28 @@ export default function App() {
         initial={{ opacity: 0, scale: 0.96 }} animate={booted ? { opacity: 1, scale: 1 } : {}} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <AnimatePresence mode="popLayout" initial={false} custom={dir}>
-            <motion.div
-              key={page}
-              custom={dir}
-              className="absolute inset-0 flex flex-col"
-              variants={{
-                enter: (d: number) => ({ x: d * 60, opacity: 0 }),
-                center: { x: 0, opacity: 1 },
-                exit: (d: number) => ({ x: d * -60, opacity: 0 }),
-              }}
-              initial="enter" animate="center" exit="exit"
-              transition={{ type: 'spring', stiffness: 420, damping: 38 }}
-            >
-              {page === 'home' ? <Home onInfo={() => setInfo(true)} onPremium={() => setPremiumOpen(true)} /> : null}
-              {page === 'liked' ? <Liked onOpenRadio={() => go('home')} /> : null}
-              {page === 'profile' ? <Profile onPremium={() => setPremiumOpen(true)} onUpdate={setUpdate} /> : null}
-            </motion.div>
-          </AnimatePresence>
+          {/* all pages stay mounted: switching only fades/slides, nothing is rebuilt */}
+          {ORDER.map((p) => {
+            const active = p === page;
+            const side = ORDER.indexOf(p) < ORDER.indexOf(page) ? -1 : 1;
+            return (
+              <motion.div
+                key={p}
+                className="absolute inset-0 flex flex-col"
+                initial={false}
+                animate={active
+                  ? { opacity: 1, x: 0, visibility: 'visible' }
+                  : { opacity: 0, x: side * 24, transitionEnd: { visibility: 'hidden' } }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                style={{ pointerEvents: active ? 'auto' : 'none', willChange: 'transform, opacity' }}
+                aria-hidden={!active}
+              >
+                {p === 'home' ? <Home onInfo={() => setInfo(true)} onPremium={() => setPremiumOpen(true)} /> : null}
+                {p === 'liked' ? <Liked onOpenRadio={() => go('home')} /> : null}
+                {p === 'profile' ? <Profile onPremium={() => setPremiumOpen(true)} onUpdate={setUpdate} /> : null}
+              </motion.div>
+            );
+          })}
         </div>
         <NavBar page={page} onPage={go} />
       </motion.main>

@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { player, playlist, usePlayer } from '../audio/player';
+import { player, playlist, usePlayerTime } from '../audio/player';
 import { placeholderPeaks, trackPeaks } from '../lib/waveform';
 import { press } from '../lib/feedback';
 
@@ -35,7 +35,7 @@ function Noise() {
 }
 
 export function WaveLCD() {
-  const s = usePlayer();
+  const s = usePlayerTime();
   const t = playlist[s.index];
   const [peaks, setPeaks] = useState(() => placeholderPeaks(t.id, BARS));
   useEffect(() => {

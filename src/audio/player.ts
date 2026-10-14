@@ -59,9 +59,13 @@ let state: PlayerState = {
 };
 
 const listeners = new Set<() => void>();
+/** Playback position changes several times a second: only the LCD and lyrics listen to it. */
+const timeListeners = new Set<() => void>();
 function set(patch: Partial<PlayerState>) {
   state = { ...state, ...patch };
-  listeners.forEach((l) => l());
+  const timeOnly = Object.keys(patch).every((k) => k === 'time');
+  if (!timeOnly) listeners.forEach((l) => l());
+  timeListeners.forEach((l) => l());
   if ('index' in patch || 'volume' in patch || 'shuffle' in patch || 'loop' in patch || 'liked' in patch || 'saved' in patch || 'lang' in patch) {
     try { localStorage.setItem(LS, JSON.stringify({ index: state.index, id: playlist[state.index]?.id, volume: state.volume, shuffle: state.shuffle, loop: state.loop, liked: state.liked, saved: state.saved, lang: state.lang })); } catch { /* private mode */ }
   }
@@ -257,8 +261,19 @@ async function refreshCatalog() {
 refreshCatalog();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshCatalog(); });
 
+/** Player state without the playback clock: re-renders on track / play / like… changes only. */
 export function usePlayer(): PlayerState {
-  return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => state);
+  return useSyncExternalStore(subscribe, getSnapshot);
 }
+/** Same state, but also re-renders while the song plays (for the clock, waveform and lyrics). */
+export function usePlayerTime(): PlayerState {
+  return useSyncExternalStore(subscribeTime, () => state);
+}
+// usePlayer's snapshot only moves on non-time changes, so time ticks never re-render its users
+let snapshot = state;
+listeners.add(() => { snapshot = state; });
+const getSnapshot = () => snapshot;
+function subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l); }; }
+function subscribeTime(l: () => void) { timeListeners.add(l); return () => { timeListeners.delete(l); }; }
 export const getState = () => state;
 export { playlist };

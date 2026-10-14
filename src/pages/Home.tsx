@@ -1,8 +1,8 @@
-import { AnimatePresence, motion } from 'motion/react';
-import { useState } from 'react';
+import { AnimatePresence, animate, motion, useMotionValue, type PanInfo } from 'motion/react';
+import { useRef, useState } from 'react';
 import { player, playlist, usePlayer } from '../audio/player';
 import { Icon, Key, Led, Screw } from '../components/parts';
-import { TopPanel, tabList, isOst, type Tab } from '../components/TopPanel';
+import { TopPanel, tabList, isOst, type Drawer, type Tab } from '../components/TopPanel';
 import { Tuner } from '../components/Tuner';
 import { WaveLCD } from '../components/WaveLCD';
 
@@ -19,6 +19,26 @@ export function Home({ onInfo, onPremium }: { onInfo: () => void; onPremium: () 
   const at = (d: number) => band[(((pos + d) % band.length) + band.length) % band.length];
   const onSave = () => (s.premium ? player.toggleSave(t.id) : onPremium());
 
+  /* ---- pull-down panel: grows down to the nav bar, the controls slide away under it ---- */
+  const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLElement>(null);
+  const ext = useMotionValue(0);
+  const [open, setOpen] = useState(false);
+  const start = useRef(0);
+  const maxExt = () => Math.max(0, (root.current?.clientHeight ?? 0) - ((panel.current?.offsetHeight ?? 0) - ext.get()) - 6);
+  const settle = (to: boolean) => {
+    setOpen(to);
+    animate(ext, to ? maxExt() : 0, { type: 'spring', stiffness: 320, damping: 36 });
+  };
+  const drawer: Drawer = {
+    ext,
+    open,
+    toggle: () => settle(!open),
+    onPanStart: () => { start.current = ext.get(); },
+    onPan: (i: PanInfo) => ext.set(Math.min(maxExt(), Math.max(0, start.current + i.offset.y))),
+    onPanEnd: (i: PanInfo) => settle(i.velocity.y > 300 ? true : i.velocity.y < -300 ? false : ext.get() > maxExt() / 2),
+  };
+
   const changeTab = (next: Tab) => {
     setTab(next);
     const nextList = tabList(next, s.saved);
@@ -26,10 +46,10 @@ export function Home({ onInfo, onPremium }: { onInfo: () => void; onPremium: () 
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <TopPanel tab={tab} onTab={changeTab} onPremium={onPremium} />
+    <div ref={root} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <TopPanel tab={tab} onTab={changeTab} onPremium={onPremium} drawer={drawer} panelRef={panel} />
 
-      <section className="relative flex flex-1 flex-col justify-center px-4 pb-1 pt-1.5">
+      <motion.section className="relative flex flex-1 flex-col justify-center px-4 pb-1 pt-1.5" style={{ y: ext }} inert={open}>
         {/* recessed seam grooves of the housing */}
         <div className="groove-h pointer-events-none absolute inset-x-0 top-0" />
         <div className="relative z-10 flex flex-col">
@@ -72,7 +92,7 @@ export function Home({ onInfo, onPremium }: { onInfo: () => void; onPremium: () 
             </Key>
           </div>
         </div>
-      </section>
+      </motion.section>
     </div>
   );
 }

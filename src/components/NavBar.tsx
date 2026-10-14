@@ -24,7 +24,7 @@ export function NavBar({ page, onPage }: { page: Page; onPage: (p: Page) => void
               aria-label={label}
             >
               <span className={active ? 'opacity-100' : 'opacity-75'}>{icon}</span>
-              <span className="micro text-[9.5px]">{label}</span>
+              <span className="micro" style={{ fontSize: 10, letterSpacing: "0.06em" }}>{label}</span>
             </motion.button>
           );
         })}

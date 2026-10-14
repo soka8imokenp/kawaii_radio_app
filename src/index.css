@@ -78,7 +78,7 @@ body {
 .font-dot { font-family: 'DotGothic16', ui-monospace, monospace; letter-spacing: 0.05em; }
 .font-cond { font-family: 'Inter', sans-serif; }
 /* compact uppercase micro-label */
-.micro { font-family: 'Inter', sans-serif; font-weight: 800; font-size: 11px; line-height: 1; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ctl-ink); }
+.micro { font-family: 'Pixelify Sans', 'DotGothic16', ui-monospace, monospace; font-weight: 600; font-size: 12px; line-height: 1; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ctl-ink); }
 .emboss { text-shadow: var(--emboss); }
 .icon-emboss { filter: drop-shadow(0 1px 0 var(--hl)); }
 
@@ -182,3 +182,7 @@ body {
 .no-scrollbar { scrollbar-width: none; }
 
 .logo-ink { filter: grayscale(1) brightness(0.45); opacity: 0.9; }
+
+/* tiny equaliser on the active cover: transform-only, runs on the compositor */
+@keyframes eq-bounce { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+.eq-bar { transform-origin: bottom; animation: eq-bounce 0.9s ease-in-out infinite; }

@@ -3,7 +3,7 @@ import { useState, type ReactNode, type CSSProperties } from 'react';
 import { press } from '../lib/feedback';
 
 /**
- * Physical key: sinks on press, springs back, clicks + haptics.
+ * Physical key: sinks on press, springs back, clicks.
  * `cap` = key cap seated inside a shared .rim frame (no rim of its own).
  */
 export function Key({ children, onPress, active, className = '', style, round, cap, ariaLabel }: {

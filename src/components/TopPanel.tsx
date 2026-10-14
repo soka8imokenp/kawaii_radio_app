@@ -1,6 +1,6 @@
-import { AnimatePresence, motion } from 'motion/react';
-import { useMemo } from 'react';
-import { player, playlist, usePlayer } from '../audio/player';
+import { AnimatePresence, motion, useTransform, type MotionValue, type PanInfo } from 'motion/react';
+import { useEffect, useMemo, useRef } from 'react';
+import { player, playlist, usePlayer, usePlayerTime } from '../audio/player';
 import { press } from '../lib/feedback';
 import { lineAt, parseLrc } from '../lib/lrc';
 
@@ -84,49 +84,102 @@ function EqIcon() {
   return (
     <span className="flex h-3 items-end gap-[2px]">
       {[0, 1, 2].map((k) => (
-        <motion.span key={k} className="w-[3px] rounded-sm bg-[#1d1e22]" animate={{ height: ['30%', '100%', '45%', '80%', '30%'] }} transition={{ duration: 0.9 + k * 0.15, repeat: Infinity, ease: 'easeInOut' }} />
+        <span key={k} className="eq-bar h-full w-[3px] rounded-sm bg-[#1d1e22]" style={{ animationDuration: `${0.8 + k * 0.17}s` }} />
       ))}
     </span>
   );
 }
 
-/** Lyrics when the song has them, otherwise a "now on air" readout. Title lives here, not on the cover. */
-function NowCard() {
+const NO_LYRICS = "Bu qo'shiq uchun matn hali yo'q";
+
+function useLyrics() {
   const s = usePlayer();
   const t = playlist[s.index];
   const src = t.lyrics ? (s.lang === 'jp' && t.lyrics.romaji ? t.lyrics.romaji : t.lyrics.uzbek) : '';
-  const lines = useMemo(() => (src ? parseLrc(src) : []), [src]);
+  return useMemo(() => (src ? parseLrc(src) : []), [src]);
+}
+
+/** Two-line karaoke readout of the collapsed panel. */
+function LyricLines() {
+  const s = usePlayerTime();
+  const lines = useLyrics();
   const li = lineAt(lines, s.time);
   const cur = li >= 0 ? lines[li].text || '♪ ♪ ♪' : '♪ · · ·';
+  if (!lines.length) {
+    return <div className="flex h-full items-center font-dot text-[14px] text-[#5d6150]">{NO_LYRICS}</div>;
+  }
   return (
-    <div className="relative z-20 overflow-hidden rounded-[16px] bg-[#1b1c1f] px-4 pb-2.5 pt-2.5 shadow-[inset_0_1px_3px_rgba(0,0,0,0.6),0_1px_0_rgba(255,255,255,0.05)]">
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div key={`${s.lang}-${li}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+        <div className="line-clamp-2 text-[17px] leading-[24px] text-[#d4e2a6] [text-shadow:0_0_10px_rgba(196,224,120,0.35)]">{cur}</div>
+        <div className="truncate text-[13px] leading-[22px] text-[#5d6150]">{lines[li + 1]?.text ?? ''}</div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+/** Whole song in the pulled-down panel; the current line stays centred and lit. */
+function FullLyrics() {
+  const s = usePlayerTime();
+  const lines = useLyrics();
+  const li = lineAt(lines, s.time);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    const line = el?.querySelector<HTMLElement>(`[data-l="${li}"]`);
+    if (el && line) el.scrollTo({ top: line.offsetTop - el.clientHeight / 2 + line.offsetHeight / 2, behavior: 'smooth' });
+  }, [li]);
+  if (!lines.length) {
+    return <div className="flex h-full items-center justify-center text-center font-dot text-[15px] text-[#5d6150]">{NO_LYRICS}</div>;
+  }
+  return (
+    <div ref={box} className="no-scrollbar h-full overflow-y-auto py-[40%] [mask-image:linear-gradient(transparent,#000_18%,#000_82%,transparent)]">
+      {lines.map((l, k) => (
+        <button key={k} data-l={k} onClick={() => player.seek(l.t)}
+          className={`block w-full py-[5px] text-left text-[17px] leading-[24px] transition-[color,opacity] duration-300 ${k === li ? 'text-[#d4e2a6] [text-shadow:0_0_10px_rgba(196,224,120,0.35)]' : 'text-[#5d6150]'}`}>
+          {l.text || '♪'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Song card: lyrics when the song has them, otherwise a note that there are none. Grows when the panel is pulled down. */
+function NowCard({ ext, open, onOpen }: { ext: MotionValue<number>; open: boolean; onOpen: () => void }) {
+  const s = usePlayer();
+  const t = playlist[s.index];
+  const lines = useLyrics();
+  const height = useTransform(ext, (v) => 70 + v);
+  const canJp = !!t.lyrics?.romaji;
+  return (
+    <div onClick={() => !open && onOpen()}
+      className="relative z-20 overflow-hidden rounded-[16px] bg-[#1b1c1f] px-4 pb-2.5 pt-2.5 shadow-[inset_0_1px_3px_rgba(0,0,0,0.6),0_1px_0_rgba(255,255,255,0.05)]">
       <div className="flex items-center gap-2">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.playing ? 'bg-[#ff4d5e] shadow-[0_0_8px_#ff4d5e]' : 'bg-[#4a4c52]'}`} />
         <span className="min-w-0 truncate text-[14px] font-bold text-white">{t.title}</span>
         <span className="min-w-0 shrink truncate text-[12px] text-[#7d818a]">{t.artist}</span>
-        <span className="ml-auto shrink-0 font-dot text-[11px] text-[#6f727b]">{lines.length ? (s.lang === 'jp' ? '日本' : "O'ZB") : s.playing ? 'EFIRDA' : 'TAYYOR'}</span>
+        {lines.length ? (
+          <button disabled={!canJp} onClick={(e) => { e.stopPropagation(); press(); player.setLang(s.lang === 'jp' ? 'uz' : 'jp'); }}
+            className="-my-2 ml-auto shrink-0 py-2 pl-2 font-dot text-[11px] text-[#6f727b]">
+            {s.lang === 'jp' && canJp ? '日本' : "O'ZB"}{canJp ? ' ⇄' : ''}
+          </button>
+        ) : (
+          <span className="ml-auto shrink-0 font-dot text-[11px] text-[#6f727b]">{s.playing ? 'EFIRDA' : 'TAYYOR'}</span>
+        )}
       </div>
-      <div className="mt-1.5 h-[70px] overflow-hidden font-dot">
-        <AnimatePresence mode="wait" initial={false}>
-          {lines.length ? (
-            <motion.div key={`${s.lang}-${li}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.24 }}>
-              <div className="line-clamp-2 text-[17px] leading-[24px] text-[#d4e2a6] [text-shadow:0_0_10px_rgba(196,224,120,0.35)]">{cur}</div>
-              <div className="truncate text-[13px] leading-[22px] text-[#5d6150]">{lines[li + 1]?.text ?? ''}</div>
+      <motion.div className="relative mt-1.5 overflow-hidden font-dot" style={{ height }}>
+        <AnimatePresence initial={false} mode="wait">
+          {open ? (
+            <motion.div key="full" className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+              <FullLyrics />
             </motion.div>
           ) : (
-            <motion.div key={`np-${t.id}`} className="flex h-full items-center gap-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="min-w-0 flex-1 text-[13px] leading-[20px] text-[#9aa08a] line-clamp-3">{t.info?.description ?? t.category}</div>
-              <div className="flex h-10 items-end gap-[3px]">
-                {[0, 1, 2, 3, 4].map((k) => (
-                  <motion.span key={k} className="w-[4px] rounded-[2px] bg-[#9fb86a]" style={{ opacity: s.playing ? 0.9 : 0.25 }}
-                    animate={s.playing ? { height: ['20%', '95%', '40%', '75%', '20%'] } : { height: '20%' }}
-                    transition={{ duration: 0.8 + k * 0.13, repeat: Infinity, ease: 'easeInOut' }} />
-                ))}
-              </div>
+            <motion.div key="lines" className="absolute inset-x-0 top-0 h-[70px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+              <LyricLines />
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -146,18 +199,32 @@ function EmptySaved({ premium, onPremium }: { premium: boolean; onPremium: () =>
   );
 }
 
-export function TopPanel({ tab, onTab, onPremium }: { tab: Tab; onTab: (t: Tab) => void; onPremium: () => void }) {
+export interface Drawer {
+  ext: MotionValue<number>;  // how far the panel is pulled down (px)
+  open: boolean;
+  onPan: (info: PanInfo) => void;
+  onPanStart: () => void;
+  onPanEnd: (info: PanInfo) => void;
+  toggle: () => void;
+}
+
+export function TopPanel({ tab, onTab, onPremium, drawer, panelRef }: {
+  tab: Tab; onTab: (t: Tab) => void; onPremium: () => void; drawer: Drawer; panelRef: React.Ref<HTMLElement>;
+}) {
   const s = usePlayer();
   const t = playlist[s.index];
   const list = useMemo(() => tabList(tab, s.saved), [tab, s.saved, s.catalog]);
+  // the panel grows over the controls without pushing them (they slide away by themselves)
+  const pull = useTransform(drawer.ext, (v) => -v);
   return (
-    <section className="relative z-20 shrink-0 overflow-hidden rounded-b-[30px] px-4 pb-2.5 pt-[max(12px,env(safe-area-inset-top))]"
-      style={{ background: 'linear-gradient(180deg, #2c2e33 0%, #232428 60%, #1f2023 100%)', boxShadow: '0 12px 26px rgba(0,0,0,0.38), inset 0 -1px 0 rgba(255,255,255,0.06)' }}>
+    <motion.section ref={panelRef} className="relative z-20 shrink-0 overflow-hidden rounded-b-[30px] px-4 pb-0 pt-[max(12px,env(safe-area-inset-top))]"
+      style={{ marginBottom: pull, background: 'linear-gradient(180deg, #2c2e33 0%, #232428 60%, #1f2023 100%)', boxShadow: '0 12px 26px rgba(0,0,0,0.38), inset 0 -1px 0 rgba(255,255,255,0.06)' }}>
       {/* ambient light from the current cover */}
       <AnimatePresence>
+        {/* drawn small and scaled up: the same glow for a fraction of the blur cost */}
         <motion.img key={t.coverArt} src={t.coverArt} alt="" aria-hidden
-          className="pointer-events-none absolute left-1/2 top-[110px] h-[280px] w-[280px] -translate-x-1/2 rounded-full object-cover"
-          style={{ filter: 'blur(48px) saturate(1.6)' }}
+          className="pointer-events-none absolute left-1/2 top-[220px] h-[70px] w-[70px] rounded-full object-cover"
+          style={{ x: '-50%', y: '-50%', scale: 4, filter: 'blur(12px) saturate(1.6)' }}
           initial={{ opacity: 0 }} animate={{ opacity: s.playing ? 0.55 : 0.32 }} exit={{ opacity: 0 }} transition={{ duration: 0.8 }} />
       </AnimatePresence>
       <div className="pointer-events-none absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(#fff 0.6px, transparent 0.8px)', backgroundSize: '4px 4px' }} />
@@ -178,9 +245,14 @@ export function TopPanel({ tab, onTab, onPremium }: { tab: Tab; onTab: (t: Tab) 
         </div>
         <div className="mt-2"><Segmented tab={tab} onTab={onTab} /></div>
         <div className="mt-2.5">{list.length ? <Covers list={list} /> : <EmptySaved premium={s.premium} onPremium={onPremium} />}</div>
-        <div className="mt-1"><NowCard /></div>
-        <div className="mx-auto mt-1.5 h-[5px] w-10 rounded-full bg-[#4a4c52] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]" />
+        <div className="mt-1"><NowCard ext={drawer.ext} open={drawer.open} onOpen={drawer.toggle} /></div>
+        {/* grip: drag down to open the lyrics, up to close; tap toggles */}
+        <motion.div className="flex h-[22px] cursor-grab items-center justify-center" style={{ touchAction: 'none' }}
+          onPanStart={drawer.onPanStart} onPan={(_, i) => drawer.onPan(i)} onPanEnd={(_, i) => drawer.onPanEnd(i)} onTap={drawer.toggle}>
+          <motion.div className="h-[5px] w-10 rounded-full bg-[#4a4c52] shadow-[inset_0_1px_1px_rgba(0,0,0,0.5)]"
+            animate={{ width: drawer.open ? 28 : 40, backgroundColor: drawer.open ? '#6a6d75' : '#4a4c52' }} />
+        </motion.div>
       </div>
-    </section>
+    </motion.section>
   );
 }

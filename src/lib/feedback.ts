@@ -1,19 +1,12 @@
-import { Capacitor } from '@capacitor/core';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
-
-const native = Capacitor.isNativePlatform();
+// No vibration: only a soft synthesized click (haptics on every tap felt heavy and laggy).
 
 /** Light detent used by the tuner wheel. */
 export function tick() {
-  if (native) Haptics.selectionChanged().catch(() => {});
-  else navigator.vibrate?.(4);
   click(2400, 0.012, 0.05);
 }
 
 /** Heavier "clack" for physical buttons. */
 export function press() {
-  if (native) Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
-  else navigator.vibrate?.(10);
   click(900, 0.03, 0.09);
 }
 
