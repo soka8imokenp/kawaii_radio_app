@@ -15,6 +15,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.statusBars
@@ -152,10 +153,13 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
             ) {
                 Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(strip))
                 Box(Modifier.weight(1f).fillMaxWidth()) { Pages(ui) }
-                AnimatedVisibility(!onHome, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                // while typing (chat, search) the keyboard takes the bottom: the player and the nav step aside,
+                // so the text field sits right on the keyboard
+                val typing = imeVisible()
+                AnimatedVisibility(!onHome && !typing, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                     MiniPlayer(onOpen = { ui.page = Page.Home })
                 }
-                NavBar(ui.page) { ui.page = it }
+                if (!typing) NavBar(ui.page) { ui.page = it }
             }
 
             LibrarySheet(open = ui.library, onClose = { ui.library = false })
@@ -212,3 +216,7 @@ private fun Modifier.blockInput() = pointerInput(Unit) {
         while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
     }
 }
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun imeVisible(): Boolean = WindowInsets.isImeVisible
