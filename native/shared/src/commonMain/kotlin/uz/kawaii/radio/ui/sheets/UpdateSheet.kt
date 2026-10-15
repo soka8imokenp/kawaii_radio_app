@@ -121,12 +121,13 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
         store.resumed.collect { if (updater.canInstall()) install(file) }
     }
 
+    // updates are mandatory: the panel can't be dismissed, the old version can't be used any more
     BaseSheet(
         open = info != null,
-        onClose = { if (phase != Phase.Downloading) onClose() },
-        scrim = Color(30, 32, 40, (0.45f * 255).toInt()),
+        onClose = { },
+        scrim = Color(30, 32, 40, (0.6f * 255).toInt()),
         radius = 30.dp,
-        dismissable = phase != Phase.Downloading,
+        dismissable = false,
         stiffness = 360f,
         damping = 34f,
     ) {
@@ -222,12 +223,9 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
                 Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(20.dp)).padding(5.dp),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Key(RoundedCornerShape(15.dp), Modifier.weight(1f).height(48.dp), onPress = { if (phase != Phase.Downloading) onClose() }) {
-                    BasicText(if (phase == Phase.Downloading) "KUTING…" else "KEYINROQ", style = T.micro())
-                }
                 AnimatedContent(
                     (phase == Phase.Permission) to (phase == Phase.Done),
-                    Modifier.weight(1.4f),
+                    Modifier.weight(1f),
                     transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.9f)) togetherWith fadeOut() },
                 ) { (perm, ok) ->
                     when {
@@ -254,6 +252,13 @@ fun UpdateSheet(info: UpdateInfo?, onBusy: (Boolean) -> Unit, onClose: () -> Uni
                         }
                     }
                 }
+            }
+            if (phase != Phase.Done) {
+                BasicText(
+                    "Ilovadan foydalanish uchun yangi versiyani o'rnating",
+                    Modifier.padding(top = 8.dp).fillMaxWidth(),
+                    style = T.pixel(11.5.sp, K.inkSoft).copy(textAlign = TextAlign.Center),
+                )
             }
             if (phase == Phase.Done) {
                 BasicText(

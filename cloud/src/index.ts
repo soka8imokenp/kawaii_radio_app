@@ -103,6 +103,9 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (path.startsWith('/api/')) {
     auth(req, env);
     const seg = path.split('/').filter(Boolean); // ['api','tracks',id?,'cover'?]
+    if (seg[1] === 'chat' && seg[2] === 'status' && m === 'GET') {
+      return env.CHAT.get(env.CHAT.idFromName('global')).fetch(new Request(new URL('/chat/status', req.url)));
+    }
     if (seg[1] === 'stickers' && seg[2] && m === 'PUT') {
       const name = seg.slice(2).join('/');
       if (!/^[\w.-]+$/.test(name)) throw new HttpError(400, 'bad sticker file name');

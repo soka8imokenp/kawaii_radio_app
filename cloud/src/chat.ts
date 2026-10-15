@@ -91,6 +91,16 @@ export class ChatRoom extends DurableObject<Env> {
 
   async fetch(req: Request): Promise<Response> {
     if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/push')) return this.registerPush(req);
+    if (req.method === 'GET' && new URL(req.url).pathname.endsWith('/status')) {
+      // diagnostics (the Worker only lets this through with the upload token)
+      const tokens = this.sql.exec('SELECT COUNT(*) AS n FROM push').one().n;
+      const enabled = this.sql.exec('SELECT COUNT(*) AS n FROM push WHERE enabled = 1').one().n;
+      const users = this.sql.exec('SELECT COUNT(*) AS n FROM users').one().n;
+      return Response.json({
+        users, pushTokens: tokens, pushEnabled: enabled, hasFirebaseKey: !!this.env.FCM_SERVICE_ACCOUNT,
+        online: this.ctx.getWebSockets().length, lastPush: (await this.ctx.storage.get('lastPush')) ?? null,
+      });
+    }
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
@@ -287,14 +297,19 @@ export class ChatRoom extends DurableObject<Env> {
 
   /** Sends the new message to every phone that wants chat notifications, except its author and people looking at the chat. */
   private async notify(msg: Msg) {
-    if (!this.env.FCM_SERVICE_ACCOUNT) return;
+    if (!this.env.FCM_SERVICE_ACCOUNT) { await this.ctx.storage.put('lastPush', { at: Date.now(), error: 'FCM_SERVICE_ACCOUNT secret is missing' }); return; }
     const sa = JSON.parse(this.env.FCM_SERVICE_ACCOUNT) as { client_email: string; private_key: string; project_id: string };
     const watching = new Set(this.ctx.getWebSockets().map((w) => this.att(w)).filter((x) => x.viewing && x.uid).map((x) => x.uid!));
     const targets = this.sql.exec(
       'SELECT p.uid, p.token FROM push p JOIN users u ON u.uid = p.uid WHERE p.enabled = 1 AND u.banned = 0 AND p.uid != ?', msg.uid,
     ).toArray().filter((r) => !watching.has(r.uid as string));
     if (!targets.length) return;
-    const access = await this.accessToken(sa);
+    let access: string;
+    try { access = await this.accessToken(sa); } catch (e) {
+      await this.ctx.storage.put('lastPush', { at: Date.now(), error: `auth: ${(e as Error).message}` });
+      return;
+    }
+    const results: string[] = [];
     const text = msg.kind === 'sticker' ? 'Stiker' : msg.kind === 'track' ? "♪ Qo'shiq ulashdi" : msg.body;
     // data-only: the app draws the notification itself (chat style, grouped, our logo)
     const data = { type: 'chat', mid: String(msg.id), name: msg.name, avatar: msg.avatar, kind: msg.kind, text: text.slice(0, 300), ts: String(msg.ts) };
@@ -304,9 +319,11 @@ export class ChatRoom extends DurableObject<Env> {
         headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: { token: t.token, data, android: { priority: 'HIGH', ttl: '86400s' } } }),
       });
+      results.push(res.ok ? 'ok' : `${res.status} ${(await res.text()).slice(0, 200)}`);
       // phone uninstalled the app or the token expired: forget it
       if (res.status === 404 || res.status === 400) this.sql.exec('DELETE FROM push WHERE uid = ? AND token = ?', t.uid, t.token);
     }));
+    await this.ctx.storage.put('lastPush', { at: Date.now(), sent: targets.length, results });
   }
 
   async webSocketClose(ws: WebSocket) {

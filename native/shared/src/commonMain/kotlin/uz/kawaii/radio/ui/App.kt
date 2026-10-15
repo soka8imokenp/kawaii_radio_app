@@ -43,7 +43,6 @@ import uz.kawaii.radio.RadioStore
 import uz.kawaii.radio.ThemeMode
 import uz.kawaii.radio.data.UpdateInfo
 import uz.kawaii.radio.data.checkForUpdate
-import uz.kawaii.radio.data.isSkipped
 import uz.kawaii.radio.data.skipBuild
 import uz.kawaii.radio.ui.home.Home
 import uz.kawaii.radio.ui.kit.LocalSound
@@ -89,7 +88,8 @@ class UiState {
 
     /** True when something was closed, false when the app should go to the background. */
     fun back(onSkipUpdate: (UpdateInfo) -> Unit): Boolean {
-        update?.let { if (!updateBusy) { onSkipUpdate(it); update = null }; return true }
+        // mandatory update: back can't close it (the app is useless until it is installed)
+        if (update != null) return true
         if (info != null) { info = null; return true }
         if (song != null) { song = null; return true }
         if (premium) { premium = false; return true }
@@ -127,11 +127,19 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
         LaunchedEffect(Unit) { store.passNeeded.collect { ui.premium = true } }
         LaunchedEffect(Unit) { store.leaveLiveAsk.collect { ui.leaveLive = true } }
 
-        // on every launch: ask GitHub Releases whether a newer build exists ("Keyinroq" hides that build until the next one)
+        // on every launch: ask GitHub Releases whether a newer build exists
         LaunchedEffect(booted) {
             if (!booted) return@LaunchedEffect
             val u = runCatching { checkForUpdate(store.platform) }.getOrNull()
-            if (u != null && !isSkipped(store.platform, u.build)) ui.update = u
+            // every new release is mandatory: "Keyinroq" no longer exists
+            if (u != null) ui.update = u
+        }
+        // and again whenever the app comes back from the background, so nobody stays on an old version
+        LaunchedEffect(booted) {
+            if (!booted) return@LaunchedEffect
+            store.resumed.collect {
+                if (ui.update == null) runCatching { checkForUpdate(store.platform) }.getOrNull()?.let { ui.update = it }
+            }
         }
 
         // the radio has a dark panel under the status bar; the other pages are plastic all the way up
