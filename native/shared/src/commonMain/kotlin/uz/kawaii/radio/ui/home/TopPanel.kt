@@ -285,7 +285,7 @@ private fun Header(playing: Boolean) {
             Px(Glyph.LIST, 12.dp, Color(0xFFB8BBC3))
             BasicText("RO'YXAT", style = T.pixel(12.sp, Color(0xFFB8BBC3), lh = 12.sp))
         }
-        // mode switch: LIVE = the shared broadcast for everyone, TANLOV = any song (Kawaii Pass)
+        // LIVE switch: on = the shared broadcast for everyone, off = any song (Kawaii Pass)
         Row(
             Modifier.darkWell(RoundedCornerShape(9.dp))
                 .tap(onClick = { sound.press(); store.setMode(if (live) Mode.PICK else Mode.LIVE) })
@@ -293,13 +293,9 @@ private fun Header(playing: Boolean) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (live) {
-                OnAirDot(playing, 7)
-                BasicText("LIVE", style = T.pixel(12.sp, if (playing) Color(0xFFFF8A95) else K.dimText2, lh = 12.sp))
-            } else {
-                Box(Modifier.size(7.dp).background(if (playing) Color(0xFF22C55E) else K.offDot, CircleShape))
-                BasicText("TANLOV", style = T.pixel(12.sp, if (playing) Color(0xFF8FE3A8) else K.dimText2, lh = 12.sp))
-            }
+            // lit = on the broadcast, dark = off (pick your own songs)
+            OnAirDot(live, 7)
+            BasicText("LIVE", style = T.pixel(12.sp, if (live) Color(0xFFFF8A95) else K.dimText2, lh = 12.sp))
         }
     }
 }
