@@ -48,6 +48,22 @@ interface Platform {
 
     /** Shares a picture (Telegram, gallery…) through the system share sheet. */
     fun shareImage(image: ImageBitmap, text: String)
+
+    /** Opens a WebSocket (the listeners' chat); callbacks may arrive on any thread. */
+    fun openSocket(url: String, listener: SocketListener): ChatSocket
+}
+
+interface ChatSocket {
+    /** False when the socket is already closed. */
+    fun send(text: String): Boolean
+    fun close()
+}
+
+interface SocketListener {
+    fun onOpen()
+    fun onMessage(text: String)
+    /** Closed or failed; [error] is null for a normal close. */
+    fun onClosed(error: String?)
 }
 
 interface KeyValueStore {

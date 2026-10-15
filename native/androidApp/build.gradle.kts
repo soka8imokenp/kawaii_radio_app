@@ -57,6 +57,8 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.okhttp) // chat WebSocket
+    implementation(libs.coil.gif) // animated chat stickers
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
     implementation(libs.media3.datasource)

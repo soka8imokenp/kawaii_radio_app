@@ -16,6 +16,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import uz.kawaii.radio.chat.ChatStore
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -276,6 +279,11 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
 
     val engine: StateFlow<EngineState> = audio.state
 
+    /** The global listeners' chat; connects the first time the Chat page is opened. */
+    val chat: ChatStore by lazy {
+        ChatStore(platform, scope, profile, mode, audio.state.map { it.playing }.stateIn(scope, SharingStarted.Eagerly, false))
+    }
+
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready.asStateFlow()
 
@@ -289,6 +297,7 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     fun onResume() {
         _resumed.tryEmit(Unit)
         refreshCatalog()
+        chat.onResume()
         // back from the background while paused: show what is on air now
         if (live && !engine.value.playing) scope.launch { tuneIn(play = false) }
     }

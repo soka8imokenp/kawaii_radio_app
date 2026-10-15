@@ -4,6 +4,8 @@
  *   GET    /playlist.json           public  – tracks the app shows (merged after the built-in ones)
  *   GET    /files/<key>             public  – audio / covers, with Range support for seeking
  *   GET    /radio                   public  – the live broadcast: which song plays when (same for everyone)
+ *   GET    /chat                    public  – WebSocket of the global listeners' chat (see chat.ts)
+ *   PUT    /api/stickers/<file>     token   – upload a sticker file (or pack.json) to stickers/
  *   POST   /api/tracks              token   – add a track (multipart or JSON with *_url fields)
  *   PATCH  /api/tracks/<id>         token   – change fields of a track (lyrics, info, category…)
  *   PUT    /api/tracks/<id>/cover   token   – replace the cover (multipart `cover` or JSON `cover_url`)
@@ -12,9 +14,15 @@
  * Writes need `Authorization: Bearer <UPLOAD_TOKEN>` (a Worker secret).
  */
 
+import { ChatRoom } from './chat';
+export { ChatRoom };
+
 export interface Env {
   BUCKET: R2Bucket;
   UPLOAD_TOKEN: string;
+  /** Typed once in the app (Profil) to become a chat admin. */
+  ADMIN_CODE: string;
+  CHAT: DurableObjectNamespace<ChatRoom>;
 }
 
 interface Track {
@@ -76,6 +84,9 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (path === '/' && m === 'GET') {
     return json({ ok: true, service: 'kawaii-radio-cloud', playlist: '/playlist.json', docs: 'see cloud/AGENT.md in the app repo' });
   }
+  if (path === '/chat') {
+    return env.CHAT.get(env.CHAT.idFromName('global')).fetch(req);
+  }
   if (path === '/radio' && m === 'GET') {
     return json(await radio(env), 200, { 'Cache-Control': 'no-store' });
   }
@@ -90,6 +101,14 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (path.startsWith('/api/')) {
     auth(req, env);
     const seg = path.split('/').filter(Boolean); // ['api','tracks',id?,'cover'?]
+    if (seg[1] === 'stickers' && seg[2] && m === 'PUT') {
+      const name = seg.slice(2).join('/');
+      if (!/^[\w.-]+$/.test(name)) throw new HttpError(400, 'bad sticker file name');
+      const body = await req.arrayBuffer();
+      if (!body.byteLength || body.byteLength > 2 * 1024 * 1024) throw new HttpError(413, 'sticker must be 1 B – 2 MB');
+      await env.BUCKET.put(`stickers/${name}`, body, { httpMetadata: { contentType: req.headers.get('Content-Type') ?? 'application/octet-stream' } });
+      return json({ ok: true, url: `/files/stickers/${name}` });
+    }
     if (seg[1] !== 'tracks') throw new HttpError(404, 'unknown endpoint');
     const id = seg[2];
     if (!id && m === 'POST') return addTrack(req, env);
@@ -124,7 +143,7 @@ async function serveFile(req: Request, env: Env, key: string): Promise<Response>
   obj.writeHttpMetadata(headers);
   headers.set('ETag', obj.httpEtag);
   headers.set('Accept-Ranges', 'bytes');
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  headers.set('Cache-Control', key.endsWith('.json') ? 'no-cache' : 'public, max-age=31536000, immutable');
 
   if (!('body' in obj)) {
     // HEAD, or a conditional request that matched (If-None-Match)

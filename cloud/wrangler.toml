@@ -7,3 +7,14 @@ binding = "BUCKET"
 bucket_name = "kawaii-radio"
 
 # UPLOAD_TOKEN is a secret:  npx wrangler secret put UPLOAD_TOKEN
+
+# the global chat room (SQLite-backed Durable Object, works on the free plan)
+[[durable_objects.bindings]]
+name = "CHAT"
+class_name = "ChatRoom"
+
+[[migrations]]
+tag = "v1-chat"
+new_sqlite_classes = ["ChatRoom"]
+
+# ADMIN_CODE is a secret too:  npx wrangler secret put ADMIN_CODE

@@ -62,7 +62,7 @@ import uz.kawaii.radio.ui.theme.K
 import uz.kawaii.radio.ui.theme.LocalFonts
 import uz.kawaii.radio.ui.theme.rememberFonts
 
-enum class Page { Home, Search, Liked, Profile }
+enum class Page { Home, Search, Chat, Liked, Profile }
 
 val LocalStore = staticCompositionLocalOf<RadioStore> { error("store not provided") }
 val LocalUi = staticCompositionLocalOf<UiState> { error("ui not provided") }
@@ -198,6 +198,7 @@ private fun Pages(ui: UiState) {
             when (p) {
                 Page.Home -> Home(ui)
                 Page.Search -> Search(active)
+                Page.Chat -> Chat(active)
                 Page.Liked -> Liked(onOpenRadio = { ui.page = Page.Home })
                 Page.Profile -> Profile(ui)
             }

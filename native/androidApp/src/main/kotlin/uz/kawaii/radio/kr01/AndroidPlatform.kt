@@ -261,4 +261,23 @@ class AndroidPlatform(private val context: Context) : Platform {
     override fun openUrl(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
+
+    private val http by lazy { okhttp3.OkHttpClient.Builder().pingInterval(25, java.util.concurrent.TimeUnit.SECONDS).build() }
+
+    override fun openSocket(url: String, listener: uz.kawaii.radio.SocketListener): uz.kawaii.radio.ChatSocket {
+        val ws = http.newWebSocket(
+            okhttp3.Request.Builder().url(url).build(),
+            object : okhttp3.WebSocketListener() {
+                override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) = listener.onOpen()
+                override fun onMessage(webSocket: okhttp3.WebSocket, text: String) = listener.onMessage(text)
+                override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, reason: String) = listener.onClosed(null)
+                override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) =
+                    listener.onClosed(t.message ?: "connection failed")
+            },
+        )
+        return object : uz.kawaii.radio.ChatSocket {
+            override fun send(text: String) = ws.send(text)
+            override fun close() { ws.close(1000, null) }
+        }
+    }
 }
