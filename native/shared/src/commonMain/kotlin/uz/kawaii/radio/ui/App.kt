@@ -118,6 +118,9 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
         var booted by remember { mutableStateOf(false) }
         var splashGone by remember { mutableStateOf(false) }
 
+        // something that needs Kawaii Pass was tried (e.g. picking a song in the live broadcast)
+        LaunchedEffect(Unit) { store.passNeeded.collect { ui.premium = true } }
+
         // on every launch: ask GitHub Releases whether a newer build exists ("Keyinroq" hides that build until the next one)
         LaunchedEffect(booted) {
             if (!booted) return@LaunchedEffect

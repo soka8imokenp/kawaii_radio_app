@@ -3,6 +3,7 @@
  *
  *   GET    /playlist.json           public  – tracks the app shows (merged after the built-in ones)
  *   GET    /files/<key>             public  – audio / covers, with Range support for seeking
+ *   GET    /radio                   public  – the live broadcast: which song plays when (same for everyone)
  *   POST   /api/tracks              token   – add a track (multipart or JSON with *_url fields)
  *   PATCH  /api/tracks/<id>         token   – change fields of a track (lyrics, info, category…)
  *   PUT    /api/tracks/<id>/cover   token   – replace the cover (multipart `cover` or JSON `cover_url`)
@@ -74,6 +75,9 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   if (path === '/' && m === 'GET') {
     return json({ ok: true, service: 'kawaii-radio-cloud', playlist: '/playlist.json', docs: 'see cloud/AGENT.md in the app repo' });
+  }
+  if (path === '/radio' && m === 'GET') {
+    return json(await radio(env), 200, { 'Cache-Control': 'no-store' });
   }
   if ((path === '/playlist.json' || path === '/api/tracks') && (m === 'GET' || m === 'HEAD')) {
     const pl = await readPlaylist(env);
@@ -390,4 +394,107 @@ async function deleteTrack(env: Env, id: string): Promise<Response> {
     .map((s) => s.slice('/files/'.length));
   if (keys.length) await env.BUCKET.delete(keys);
   return json({ ok: true, removed: removed!.id, total: pl.tracks.length });
+}
+
+/* ---------------- live radio ----------------
+ * The broadcast is a chain of cycles. A cycle plays every song once, shuffled, back to back; its
+ * timetable is fixed when it is created and stored in R2, so every listener computes the same song
+ * and the same second from the clock. Songs added later join the next cycle, so nothing that is
+ * already scheduled moves.
+ */
+
+const RADIO_KEY = 'radio.json';
+/** At most this many slots are handed to the app at once. */
+const RADIO_AHEAD = 80;
+
+interface Slot { id: string; start: number; duration: number } // epoch ms, ms
+interface Cycle { start: number; end: number; slots: Slot[] }
+interface RadioState { cycles: Cycle[]; version?: number }
+/** The next 3 hours are never changed: phones already know them. */
+const FROZEN_MS = 3 * 3600_000;
+
+/** Small seeded PRNG: the same seed gives the same shuffle on every request. */
+function mulberry32(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makeCycle(tracks: Track[], start: number, avoidFirst?: string, seed = start): Cycle | null {
+  const pool = tracks.filter((t) => t.duration > 0);
+  if (!pool.length) return null;
+  const rnd = mulberry32(seed % 2147483647);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  // never the same song twice in a row across the cycle boundary
+  if (pool.length > 1 && pool[0].id === avoidFirst) pool.push(pool.shift()!);
+  let at = start;
+  const slots = pool.map((t) => {
+    const s = { id: t.id, start: at, duration: Math.round(t.duration * 1000) };
+    at += s.duration;
+    return s;
+  });
+  return { start, end: at, slots };
+}
+
+async function radio(env: Env) {
+  const now = Date.now();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const obj = await env.BUCKET.get(RADIO_KEY);
+    const state: RadioState = obj ? ((await obj.json()) as RadioState) : { cycles: [] };
+    let cycles = state.cycles.filter((c) => c.end > now - 60_000);
+    let changed = cycles.length !== state.cycles.length;
+    const playlist = (await readPlaylist(env)).data;
+
+    // songs were added or removed: re-plan everything after the frozen window. Songs of the
+    // current cycle that have not been scheduled inside the window (new ones included) are
+    // shuffled again into its rest, so new songs come on air within a few hours.
+    if (cycles.length && state.version !== playlist.version) {
+      const freeze = now + FROZEN_MS;
+      const k = cycles.findIndex((c) => c.end > freeze);
+      if (k >= 0) {
+        const c = cycles[k];
+        const kept = c.slots.filter((s) => s.start < freeze);
+        const used = new Set(kept.map((s) => s.id));
+        const tailStart = kept.length ? kept[kept.length - 1].start + kept[kept.length - 1].duration : c.start;
+        const tail = makeCycle(playlist.tracks.filter((t) => !used.has(t.id)), tailStart, kept[kept.length - 1]?.id, tailStart + playlist.version);
+        cycles = [...cycles.slice(0, k), { start: c.start, end: tail?.end ?? tailStart, slots: [...kept, ...(tail?.slots ?? [])] }];
+      }
+      changed = true;
+    }
+
+    // nobody listened for a long time: the broadcast simply starts again from now
+    if (!cycles.length || cycles[0].start > now) {
+      const c = makeCycle(playlist.tracks, now - (now % 1000));
+      if (!c) return { serverTime: now, slots: [] };
+      cycles = [c];
+      changed = true;
+    }
+    // keep more than the frozen window scheduled ahead, so the app never runs off the end;
+    // a new cycle (with every song, new ones included) starts as soon as the previous one ends
+    while (cycles[cycles.length - 1].end - now < FROZEN_MS + 3600_000) {
+      const last = cycles[cycles.length - 1];
+      const c = makeCycle(playlist.tracks, last.end, last.slots[last.slots.length - 1]?.id);
+      if (!c) break;
+      cycles.push(c);
+      changed = true;
+    }
+
+    if (changed) {
+      const opts: R2PutOptions = { httpMetadata: { contentType: 'application/json' } };
+      if (obj) opts.onlyIf = { etagMatches: obj.etag };
+      const ok = await env.BUCKET.put(RADIO_KEY, JSON.stringify({ cycles, version: playlist.version }), opts);
+      if (!ok) { await new Promise((r) => setTimeout(r, 80 + Math.random() * 150)); continue; } // another request won, use its timetable
+    }
+
+    // only the frozen window: what phones keep is exactly what can no longer change
+    const slots = cycles.flatMap((c) => c.slots).filter((s) => s.start + s.duration > now && s.start < now + FROZEN_MS).slice(0, RADIO_AHEAD);
+    return { serverTime: Date.now(), slots };
+  }
+  throw new HttpError(409, 'radio is busy, try again');
 }

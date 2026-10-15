@@ -144,7 +144,8 @@ fun Home(ui: UiState) {
     val changeTab = { next: Tab ->
         tab = next
         val list = tabList(next, tracks, saved)
-        if (list.isNotEmpty() && list.none { it.t.id == t.id }) store.play(list[0].t.id, list.map { it.t.id })
+        // live broadcast: tabs only browse, the song on air keeps playing
+        if (!store.live && list.isNotEmpty() && list.none { it.t.id == t.id }) store.play(list[0].t.id, list.map { it.t.id })
     }
 
     val density = LocalDensity.current.density

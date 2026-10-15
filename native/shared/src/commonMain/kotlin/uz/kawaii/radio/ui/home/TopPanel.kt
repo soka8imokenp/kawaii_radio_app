@@ -102,6 +102,7 @@ import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import uz.kawaii.radio.Lang
+import uz.kawaii.radio.Mode
 import uz.kawaii.radio.data.LyricLine
 import uz.kawaii.radio.data.Track
 import uz.kawaii.radio.data.lineAt
@@ -262,6 +263,9 @@ private fun coverColors(b: ImageBitmap): List<Color> {
 private fun Header(playing: Boolean) {
     val ui = LocalUi.current
     val sound = LocalSound.current
+    val store = LocalStore.current
+    val mode by store.mode.collectAsState()
+    val live = mode == Mode.LIVE
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Logo(Color(0xFFF0F0F0), Modifier.size(26.dp))
         Spacer(Modifier.width(10.dp))
@@ -281,13 +285,21 @@ private fun Header(playing: Boolean) {
             Px(Glyph.LIST, 12.dp, Color(0xFFB8BBC3))
             BasicText("RO'YXAT", style = T.pixel(12.sp, Color(0xFFB8BBC3), lh = 12.sp))
         }
+        // mode switch: LIVE = the shared broadcast for everyone, TANLOV = any song (Kawaii Pass)
         Row(
-            Modifier.darkWell(RoundedCornerShape(9.dp)).padding(horizontal = 10.dp, vertical = 5.dp),
+            Modifier.darkWell(RoundedCornerShape(9.dp))
+                .tap(onClick = { sound.press(); store.setMode(if (live) Mode.PICK else Mode.LIVE) })
+                .padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OnAirDot(playing, 7)
-            BasicText("ON AIR", style = T.pixel(12.sp, if (playing) Color(0xFFFF8A95) else K.dimText2, lh = 12.sp))
+            if (live) {
+                OnAirDot(playing, 7)
+                BasicText("LIVE", style = T.pixel(12.sp, if (playing) Color(0xFFFF8A95) else K.dimText2, lh = 12.sp))
+            } else {
+                Box(Modifier.size(7.dp).background(if (playing) Color(0xFF22C55E) else K.offDot, CircleShape))
+                BasicText("TANLOV", style = T.pixel(12.sp, if (playing) Color(0xFF8FE3A8) else K.dimText2, lh = 12.sp))
+            }
         }
     }
 }
