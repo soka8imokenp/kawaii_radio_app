@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import uz.kawaii.radio.chat.ChatStore
 import uz.kawaii.radio.chat.PublicCard
@@ -106,6 +107,13 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     val artists: StateFlow<List<Artist>> = _artists.asStateFlow()
 
     fun artist(id: String?): Artist? = _artists.value.firstOrNull { it.id == id }
+
+    /** Artist order, song counts and fallback covers, rebuilt off the main thread when artists or songs change. */
+    val artistIndex: StateFlow<uz.kawaii.radio.data.ArtistIndex> by lazy {
+        combine(_artists, _tracks) { a, t -> uz.kawaii.radio.data.buildArtistIndex(a, t) }
+            .flowOn(kotlinx.coroutines.Dispatchers.Default)
+            .stateIn(scope, SharingStarted.Eagerly, uz.kawaii.radio.data.ArtistIndex())
+    }
 
     /** Songs of [a] in our catalogue, the ones listened to most first. */
     fun songsOf(a: Artist): List<Track> =

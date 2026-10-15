@@ -31,13 +31,39 @@ data class Artist(
     /** Their best-known songs (not necessarily in our catalogue). */
     val known: List<String> = emptyList(),
 ) {
-    private fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+    /** Normalised names of this artist (computed once, not for every song). */
+    val keys: Set<String> by lazy { (aliases + name).map(::artistKey).toSet() }
 
     /** Does a song credit (e.g. "Kenshi Yonezu, Hikaru Utada") name this artist? */
-    fun sings(credit: String): Boolean {
-        val names = (aliases + name).map(::norm).toSet()
-        return credit.split(Regex(""",| feat\.? | ft\.? | & | x |/""", RegexOption.IGNORE_CASE)).any { norm(it) in names }
+    fun sings(credit: String): Boolean = creditKeys(credit).any { it in keys }
+}
+
+private val CREDIT_SPLIT = Regex(""",| feat\.? | ft\.? | & | x |/""", RegexOption.IGNORE_CASE)
+
+fun artistKey(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+
+/** The artists named in a song credit, normalised. */
+fun creditKeys(credit: String): List<String> = credit.split(CREDIT_SPLIT).map(::artistKey).filter { it.isNotEmpty() }
+
+/** Precomputed once per catalogue change: artists ordered by how many of our songs they sing, with a cover each. */
+data class ArtistIndex(
+    val order: List<Artist> = emptyList(),
+    val songs: Map<String, Int> = emptyMap(),
+    val cover: Map<String, String> = emptyMap(),
+)
+
+fun buildArtistIndex(artists: List<Artist>, tracks: List<Track>): ArtistIndex {
+    // one pass over the songs: credit name → songs, instead of artists × songs regex checks
+    val byKey = HashMap<String, MutableList<Track>>()
+    for (t in tracks) for (k in creditKeys(t.artist)) byKey.getOrPut(k) { mutableListOf() }.add(t)
+    val songs = HashMap<String, Int>()
+    val cover = HashMap<String, String>()
+    for (a in artists) {
+        val mine = a.keys.flatMap { byKey[it].orEmpty() }.distinctBy { it.id }
+        songs[a.id] = mine.size
+        mine.firstOrNull()?.coverArt?.let { cover[a.id] = it }
     }
+    return ArtistIndex(artists.sortedByDescending { songs[it.id] ?: 0 }, songs, cover)
 }
 
 @Serializable

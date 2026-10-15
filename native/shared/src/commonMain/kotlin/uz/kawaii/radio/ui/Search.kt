@@ -137,10 +137,9 @@ private fun ArtistStrip() {
     val store = LocalStore.current
     val ui = LocalUi.current
     val sound = LocalSound.current
-    val artists by store.artists.collectAsState()
-    val tracks by store.tracks.collectAsState()
-    if (artists.isEmpty()) return
-    val top = remember(artists, tracks) { artists.sortedByDescending { a -> tracks.count { a.sings(it.artist) } }.take(12) }
+    val index by store.artistIndex.collectAsState()
+    if (index.order.isEmpty()) return
+    val top = remember(index) { index.order.take(12) }
     Column(Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(20.dp)).padding(vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             BasicText("IJROCHILAR", Modifier.weight(1f), style = T.micro(12.sp, K.inkSoft))

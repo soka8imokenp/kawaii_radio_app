@@ -50,8 +50,8 @@ import uz.kawaii.radio.ui.theme.T
 @Composable
 fun ArtistPhoto(a: Artist, size: Dp, modifier: Modifier = Modifier) {
     val store = LocalStore.current
-    val tracks by store.tracks.collectAsState()
-    val fallback = remember(a, tracks) { tracks.firstOrNull { a.sings(it.artist) }?.coverArt }
+    val index by store.artistIndex.collectAsState()
+    val fallback = index.cover[a.id]
     // small avatars load the small picture: decoding big images for a grid is what made it stutter
     val url = (if (size <= 100.dp) a.thumb ?: a.picture else a.picture ?: a.thumb) ?: fallback
     val m = modifier.size(size).clip(CircleShape).border(2.dp, K.lcdBorder.copy(alpha = 0.35f), CircleShape)
@@ -71,10 +71,8 @@ fun AllArtistsSheet(open: Boolean, onClose: () -> Unit) {
     val store = LocalStore.current
     val ui = LocalUi.current
     val sound = LocalSound.current
-    val artists by store.artists.collectAsState()
-    val tracks by store.tracks.collectAsState()
-    // the most-played artists in our catalogue first
-    val sorted = remember(artists, tracks) { artists.sortedByDescending { a -> tracks.count { a.sings(it.artist) } } }
+    // ordered once off the main thread (most songs in our catalogue first)
+    val sorted = store.artistIndex.collectAsState().value.order
     Sheet(open, onClose, "Ijrochilar", scroll = false) {
         // lazy grid: only the avatars on screen are built and loaded, so it scrolls without stutter
         LazyVerticalGrid(
