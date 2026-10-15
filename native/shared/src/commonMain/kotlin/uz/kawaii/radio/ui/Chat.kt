@@ -48,6 +48,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -82,7 +89,10 @@ fun Chat(active: Boolean) {
     val store = LocalStore.current
     val chat = store.chat
     val sound = LocalSound.current
-    LaunchedEffect(active) { if (active) chat.start() }
+    LaunchedEffect(active) {
+        if (active) { chat.start(); store.platform.clearChatNotifications() }
+        chat.setPageVisible(active)
+    }
 
     val messages by chat.messages.collectAsState()
     val me by chat.me.collectAsState()
@@ -96,7 +106,6 @@ fun Chat(active: Boolean) {
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ChatMsg?>(null) }
     var picker by remember { mutableStateOf(false) }
-    var menuFor by remember { mutableStateOf<ChatMsg?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { chat.errors.collect { toast = it } }
@@ -140,7 +149,12 @@ fun Chat(active: Boolean) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(reversed, key = { m -> if (m.pending) "p-${m.nonce}" else "m-${m.id}" }) { m ->
-                    Bubble(m, mine = m.uid == me.uid, onLong = { menuFor = m }, onReplyTap = {})
+                    Bubble(
+                        m, mine = m.uid == me.uid, admin = me.admin,
+                        onReply = { replyTo = m },
+                        onDelete = { chat.delete(m) },
+                        onBan = { chat.ban(m.uid, true) },
+                    )
                 }
                 if (messages.isEmpty() && connected) {
                     item(key = "empty") {
@@ -223,18 +237,7 @@ fun Chat(active: Boolean) {
         }
     }
 
-    // long press on a bubble: reply, delete (own or as admin), block (admin)
-    val m = menuFor
-    Sheet(m != null, { menuFor = null }, "Xabar") {
-        if (m != null) {
-            val mine = m.uid == me.uid
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PixelKey("Javob berish", Modifier.fillMaxWidth(), height = 48.dp) { replyTo = m; menuFor = null }
-                if (mine || me.admin) PixelKey("O'chirish", Modifier.fillMaxWidth(), height = 48.dp) { chat.delete(m); menuFor = null }
-                if (me.admin && !mine) PixelKey("Bloklash: ${m.name}", Modifier.fillMaxWidth(), height = 48.dp) { chat.ban(m.uid, true); menuFor = null }
-            }
-        }
-    }
+    UserSheet()
 }
 
 private fun preview(m: ChatMsg) = when (m.kind) {
@@ -252,15 +255,16 @@ private fun RoundKey(glyph: List<String>, enabled: Boolean = true, active: Boole
 }
 
 @Composable
-private fun Bubble(m: ChatMsg, mine: Boolean, onLong: () -> Unit, onReplyTap: () -> Unit) {
+private fun Bubble(m: ChatMsg, mine: Boolean, admin: Boolean, onReply: () -> Unit, onDelete: () -> Unit, onBan: () -> Unit) {
     val store = LocalStore.current
+    var menu by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().alpha(if (m.pending) 0.6f else 1f),
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom,
     ) {
         if (!mine) {
-            AvatarView(m.avatar, null, 30.dp)
+            AvatarView(m.avatar, null, 30.dp, Modifier.tap(onClick = { store.chat.whois(m.uid) }))
             Spacer(Modifier.width(6.dp))
         }
         val shape = RoundedCornerShape(16.dp)
@@ -268,13 +272,16 @@ private fun Bubble(m: ChatMsg, mine: Boolean, onLong: () -> Unit, onReplyTap: ()
         Column(
             Modifier.widthIn(max = 270.dp)
                 .then(if (bare) Modifier else if (mine) Modifier.lcd(shape).border(2.dp, K.lcdBorder, shape) else Modifier.raised(shape))
-                .pointerInput(m.id, m.nonce) { detectTapGestures(onLongPress = { onLong() }) }
+                .pointerInput(m.id, m.nonce) { detectTapGestures(onLongPress = { if (!m.pending || mine) menu = true }) }
                 .padding(horizontal = if (bare) 0.dp else 12.dp, vertical = if (bare) 0.dp else 8.dp),
         ) {
             val ink = if (mine) K.lcdInk else K.ink
-            if (!mine) BasicText(m.name, style = T.pixel(12.sp, K.inkSoft, weight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+            if (!mine) BasicText(
+                m.name, Modifier.tap(onClick = { store.chat.whois(m.uid) }),
+                style = T.pixel(12.sp, K.inkSoft, weight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+            )
             m.reply?.let { r ->
-                Column(Modifier.padding(top = 4.dp, bottom = 4.dp).tap(onClick = onReplyTap)) {
+                Column(Modifier.padding(top = 4.dp, bottom = 4.dp)) {
                     BasicText("↩ ${r.name}", style = T.pixel(11.sp, ink.copy(alpha = 0.6f)))
                     BasicText(if (r.kind == "text") r.body else if (r.kind == "sticker") "Stiker" else "Qo'shiq", style = T.pixel(12.sp, ink.copy(alpha = 0.75f)), maxLines = 1)
                 }
@@ -302,6 +309,7 @@ private fun Bubble(m: ChatMsg, mine: Boolean, onLong: () -> Unit, onReplyTap: ()
                 Modifier.align(Alignment.End).padding(top = 2.dp),
                 style = T.pixel(10.sp, ink.copy(alpha = 0.5f)),
             )
+            if (menu) MessageMenu(m, mine, admin, onDismiss = { menu = false }, onReply = onReply, onDelete = onDelete, onBan = onBan)
         }
     }
 }
@@ -344,5 +352,135 @@ private fun NowPlayingChip() {
                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+/** Telegram-style menu next to the message: below it, or above when there is no room. */
+private class NextToBubble(private val mine: Boolean, private val gap: Int) : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val maxX = (windowSize.width - popupContentSize.width).coerceAtLeast(0)
+        val x = (if (mine) anchorBounds.right - popupContentSize.width else anchorBounds.left).coerceIn(0, maxX)
+        val below = anchorBounds.bottom + gap
+        val y = if (below + popupContentSize.height <= windowSize.height) below
+        else (anchorBounds.top - gap - popupContentSize.height).coerceAtLeast(0)
+        return IntOffset(x, y)
+    }
+}
+
+@Suppress("DEPRECATION")
+@Composable
+private fun MessageMenu(m: ChatMsg, mine: Boolean, admin: Boolean, onDismiss: () -> Unit, onReply: () -> Unit, onDelete: () -> Unit, onBan: () -> Unit) {
+    val sound = LocalSound.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 6.dp.roundToPx() }
+    Popup(popupPositionProvider = NextToBubble(mine, gap), onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        Column(Modifier.width(196.dp).raised(RoundedCornerShape(14.dp)).padding(vertical = 4.dp)) {
+            @Composable
+            fun item(label: String, color: androidx.compose.ui.graphics.Color = K.ink, action: () -> Unit) {
+                Box(
+                    Modifier.fillMaxWidth().height(42.dp).tap(onClick = { sound.press(); onDismiss(); action() }).padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) { BasicText(label, style = T.pixel(14.sp, color)) }
+            }
+            if (!m.pending) item("↩  Javob berish", action = onReply)
+            if (m.kind == "text") item("⧉  Nusxa olish") { clipboard.setText(androidx.compose.ui.text.AnnotatedString(m.body)) }
+            if (mine || admin) item("✕  O'chirish", K.onAir, onDelete)
+            if (admin && !mine) item("⊘  Bloklash", K.onAir, onBan)
+        }
+    }
+}
+
+/** Somebody's profile page from the chat: avatar, badges, an LCD of their numbers, favourites and the song on now. */
+@Composable
+private fun UserSheet() {
+    val store = LocalStore.current
+    val chat = store.chat
+    val sound = LocalSound.current
+    val u by chat.user.collectAsState()
+    val me by chat.me.collectAsState()
+    val shown = u
+    Sheet(shown != null, { chat.closeUser() }, "Profil") {
+        if (shown == null) return@Sheet
+        val c = shown.card
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            AvatarView(shown.avatar, null, 84.dp)
+            BasicText(
+                shown.name, Modifier.padding(top = 10.dp),
+                style = T.pixel(22.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+            )
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (shown.admin) Badge("ADMIN", K.gold)
+                when {
+                    shown.live -> Badge("● LIVE", K.onAir)
+                    shown.online -> Badge("● ONLAYN", K.ledGreen)
+                    shown.seen > 0 -> BasicText("oxirgi marta: ${uz.kawaii.radio.data.formatWhen(shown.seen)}", style = T.pixel(12.sp, K.inkSoft))
+                }
+            }
+        }
+        // numbers on a little LCD, like the Kawaii Pass panel
+        Row(
+            Modifier.padding(top = 16.dp).fillMaxWidth().lcd(RoundedCornerShape(16.dp)).border(3.dp, K.lcdBorder, RoundedCornerShape(16.dp))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            LcdStat(Modifier.weight(1f), (c?.likes ?: 0).toString(), "SEVIMLI")
+            LcdStat(Modifier.weight(1f), ((c?.minutes ?: 0) / 60).toString(), "SOAT")
+            LcdStat(Modifier.weight(1f), shown.messages.toString(), "XABAR")
+        }
+        if (c?.fav != null || !c?.top.isNullOrEmpty()) {
+            Column(Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(16.dp)).padding(14.dp)) {
+                c?.fav?.let {
+                    BasicText("SEVIMLI IJROCHI", style = T.micro(11.sp, K.inkSoft))
+                    BasicText(it, Modifier.padding(top = 4.dp, bottom = 8.dp), style = T.pixel(16.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                }
+                if (!c?.top.isNullOrEmpty()) {
+                    BasicText("KO'P TINGLAGANLARI", style = T.micro(11.sp, K.inkSoft))
+                    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        c!!.top.forEachIndexed { i, a -> Chip("${i + 1}. $a", false) { } }
+                    }
+                }
+            }
+        }
+        val now = c?.now?.let { store.track(it) }
+        if (now != null) {
+            Row(
+                Modifier.padding(top = 12.dp).fillMaxWidth().raised(RoundedCornerShape(16.dp))
+                    .tap(onClick = { sound.press(); chat.closeUser(); store.play(now.id) }).padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Cover(now.coverArt, 48.dp)
+                Column(Modifier.weight(1f)) {
+                    BasicText("HOZIR TINGLAYAPTI", style = T.micro(10.sp, K.inkSoft))
+                    BasicText(now.title, style = T.pixel(15.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold), maxLines = 1)
+                    BasicText(now.artist, style = T.pixel(12.sp, K.inkSoft), maxLines = 1)
+                }
+                Px(Glyph.PLAY, 12.dp, K.ctlInk)
+            }
+        }
+        if (shown.joined > 0) {
+            BasicText(
+                "Chatda: ${uz.kawaii.radio.data.formatWhen(shown.joined)} dan beri", Modifier.fillMaxWidth().padding(top = 12.dp),
+                style = T.pixel(12.sp, K.inkSoft).copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+            )
+        }
+        if (me.admin && shown.uid != me.uid && !shown.banned) {
+            PixelKey("Bloklash", Modifier.padding(top = 12.dp).fillMaxWidth(), height = 46.dp) { chat.ban(shown.uid, true); chat.closeUser() }
+        }
+    }
+}
+
+@Composable
+private fun Badge(text: String, color: androidx.compose.ui.graphics.Color) {
+    BasicText(
+        text, Modifier.raised(RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+        style = T.pixel(11.sp, color, weight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+    )
+}
+
+@Composable
+private fun LcdStat(modifier: Modifier, value: String, label: String) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        BasicText(value, style = T.pixel(24.sp, K.lcdInk, lh = 24.sp).copy(shadow = lcdShadow()))
+        BasicText(label, Modifier.padding(top = 4.dp), style = T.pixel(11.sp, K.lcdInk.copy(alpha = 0.6f)))
     }
 }

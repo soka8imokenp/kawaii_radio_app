@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "788521333355",
+    "project_id": "kawaii-radio-app",
+    "storage_bucket": "kawaii-radio-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:788521333355:android:0243028f14a36bb765f72e",
+        "android_client_info": {
+          "package_name": "uz.kawaii.radio.kr01"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhsrwHIzt4CBp8wsigdOY_WL4sOXUcNdk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -22,6 +22,8 @@ export interface Env {
   UPLOAD_TOKEN: string;
   /** Typed once in the app (Profil) to become a chat admin. */
   ADMIN_CODE: string;
+  /** Firebase service account JSON (secret) for chat push notifications; pushes are off without it. */
+  FCM_SERVICE_ACCOUNT?: string;
   CHAT: DurableObjectNamespace<ChatRoom>;
 }
 
@@ -84,7 +86,7 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (path === '/' && m === 'GET') {
     return json({ ok: true, service: 'kawaii-radio-cloud', playlist: '/playlist.json', docs: 'see cloud/AGENT.md in the app repo' });
   }
-  if (path === '/chat') {
+  if (path === '/chat' || path === '/chat/push') {
     return env.CHAT.get(env.CHAT.idFromName('global')).fetch(req);
   }
   if (path === '/radio' && m === 'GET') {

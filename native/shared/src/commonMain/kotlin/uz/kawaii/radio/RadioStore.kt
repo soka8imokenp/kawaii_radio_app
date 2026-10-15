@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import uz.kawaii.radio.chat.ChatStore
+import uz.kawaii.radio.chat.PublicCard
+import kotlinx.coroutines.flow.combine
+import uz.kawaii.radio.data.mainArtist
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -281,7 +284,20 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
 
     /** The global listeners' chat; connects the first time the Chat page is opened. */
     val chat: ChatStore by lazy {
-        ChatStore(platform, scope, profile, mode, audio.state.map { it.playing }.stateIn(scope, SharingStarted.Eagerly, false))
+        // the public profile other listeners see: favourite artist, likes, listening, top artists, song on now
+        val card = combine(_profile, _liked, _stats, audio.state, _tracks) { pr, liked, stats, e, tracks ->
+            val byId = tracks.associateBy { it.id }
+            val top = stats.entries
+                .mapNotNull { (id, st) -> byId[id]?.let { mainArtist(it.artist) to st.seconds } }
+                .groupBy({ it.first }, { it.second }).mapValues { it.value.sum() }
+                .entries.sortedByDescending { it.value }.take(3).map { it.key }
+            PublicCard(
+                fav = pr.favArtist, likes = liked.size,
+                plays = stats.values.sumOf { it.plays }, minutes = (stats.values.sumOf { it.seconds } / 60).toInt(),
+                top = top, now = if (e.playing) e.id else null,
+            )
+        }.stateIn(scope, SharingStarted.Eagerly, PublicCard())
+        ChatStore(platform, scope, profile, mode, audio.state.map { it.playing }.stateIn(scope, SharingStarted.Eagerly, false), card)
     }
 
     private val _ready = MutableStateFlow(false)
@@ -293,6 +309,9 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     /** Fires whenever the app comes back to the foreground. */
     private val _resumed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val resumed: SharedFlow<Unit> = _resumed.asSharedFlow()
+
+    /** App left the screen: the chat server may send notifications again. */
+    fun onPause() = chat.onPause()
 
     fun onResume() {
         _resumed.tryEmit(Unit)

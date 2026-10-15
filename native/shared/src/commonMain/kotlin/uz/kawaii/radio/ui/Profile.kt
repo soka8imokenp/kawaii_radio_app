@@ -246,6 +246,11 @@ fun Profile(ui: UiState) {
                 Switch3(theme.ordinal, listOf("AVTO", "KUN", "TUN")) { store.setTheme(ThemeMode.entries[it]) }
             }
             GrooveH()
+            val pushOn by store.chat.pushOn.collectAsState()
+            SettingRow("Chat bildirishnomalari", if (pushOn) "Yangi xabarlar telefonga keladi" else "Xabarlar haqida xabar berilmaydi") {
+                Switch3(if (pushOn) 1 else 0, listOf("O'CHIQ", "YONIQ")) { store.chat.setPushOn(it == 1) }
+            }
+            GrooveH()
             val cross by store.crossfade.collectAsState()
             val steps = listOf(0, 3, 6, 10)
             SettingRow("Silliq o'tish", if (cross == 0) "Qo'shiqlar orasida tanaffus" else "Qo'shiqlar $cross soniyada bir-biriga o'tadi") {

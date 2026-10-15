@@ -19,6 +19,9 @@ interface Platform {
     /** Whole response body as text; throws on network errors or non-2xx answers. */
     suspend fun httpGetText(url: String, headers: Map<String, String> = emptyMap()): String
 
+    /** POSTs a JSON body; returns the response text, throws on network errors or non-2xx answers. */
+    suspend fun httpPostJson(url: String, body: String): String
+
     /** Loudness of the track in [bars] buckets (0..1), or null when it can't be read. Cached by the platform. */
     suspend fun waveform(trackId: String, uri: String, bars: Int): FloatArray?
 
@@ -48,6 +51,9 @@ interface Platform {
 
     /** Shares a picture (Telegram, gallery…) through the system share sheet. */
     fun shareImage(image: ImageBitmap, text: String)
+
+    /** Removes the chat notification (the chat was opened). */
+    fun clearChatNotifications()
 
     /** Opens a WebSocket (the listeners' chat); callbacks may arrive on any thread. */
     fun openSocket(url: String, listener: SocketListener): ChatSocket

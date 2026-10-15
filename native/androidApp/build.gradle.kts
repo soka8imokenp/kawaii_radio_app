@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.google.services) // reads google-services.json (Firebase project kawaii-radio-app)
 }
 
 android {
@@ -59,6 +60,8 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.okhttp) // chat WebSocket
     implementation(libs.coil.gif) // animated chat stickers
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging) // chat push notifications
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
     implementation(libs.media3.datasource)

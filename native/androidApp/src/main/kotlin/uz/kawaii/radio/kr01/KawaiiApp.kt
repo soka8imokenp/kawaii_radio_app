@@ -25,6 +25,11 @@ class KawaiiApp : Application(), SingletonImageLoader.Factory {
         platform = AndroidPlatform(this)
         store = RadioStore(platform, scope)
         scope.launch { store.start() }
+        // chat notifications: hand the phone's FCM token to the chat server (refreshed tokens arrive in KawaiiMessagingService)
+        runCatching {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { store.chat.onPushToken(it) }
+        }
     }
 
     /** Same loader as before, plus animated webp for chat stickers (Android 9+; older phones show the first frame). */

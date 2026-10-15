@@ -49,6 +49,23 @@ class AndroidPlatform(private val context: Context) : Platform {
     private val waveforms = Waveform(context)
     private val offlineDir = File(context.filesDir, "offline").apply { mkdirs() }
 
+    override suspend fun httpPostJson(url: String, body: String): String = withContext(Dispatchers.IO) {
+        val c = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+        }
+        try {
+            c.outputStream.use { it.write(body.encodeToByteArray()) }
+            if (c.responseCode !in 200..299) error("HTTP ${c.responseCode}")
+            c.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            c.disconnect()
+        }
+    }
+
     override suspend fun httpGetText(url: String, headers: Map<String, String>): String = withContext(Dispatchers.IO) {
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
@@ -261,6 +278,8 @@ class AndroidPlatform(private val context: Context) : Platform {
     override fun openUrl(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
+
+    override fun clearChatNotifications() = uz.kawaii.radio.kr01.push.ChatNotifications.clear(context)
 
     private val http by lazy { okhttp3.OkHttpClient.Builder().pingInterval(25, java.util.concurrent.TimeUnit.SECONDS).build() }
 

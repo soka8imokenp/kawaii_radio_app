@@ -43,6 +43,14 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".push.KawaiiMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".widget.KawaiiWidget"
             android:exported="false"
