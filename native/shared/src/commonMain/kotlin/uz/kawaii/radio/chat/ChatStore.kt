@@ -175,35 +175,6 @@ class ChatStore(
         _unread.value = 0
     }
 
-    private val typingAt = HashMap<String, Pair<String, Long>>()
-    private val _typing = MutableStateFlow<List<String>>(emptyList())
-    /** Names of the people typing right now. */
-    val typing: StateFlow<List<String>> = _typing.asStateFlow()
-    private var typingJob: Job? = null
-    private var lastTypingSent = 0L
-
-    private fun onTyping(uid: String, name: String) {
-        if (uid == identity.uid) return
-        typingAt[uid] = name to uz.kawaii.radio.nowMs()
-        refreshTyping()
-        typingJob?.cancel()
-        typingJob = scope.launch { while (typingAt.isNotEmpty()) { delay(1_000); refreshTyping() } }
-    }
-
-    private fun refreshTyping() {
-        val now = uz.kawaii.radio.nowMs()
-        typingAt.entries.removeAll { now - it.value.second > 4_000 }
-        _typing.value = typingAt.values.map { it.first }
-    }
-
-    /** Call while the draft changes: tells the others "… yozmoqda" at most every 3 seconds. */
-    fun typing() {
-        val now = uz.kawaii.radio.nowMs()
-        if (now - lastTypingSent < 3_000) return
-        lastTypingSent = now
-        send(buildJsonObject { put("type", "typing") })
-    }
-
     /** Names seen in the chat, for "@" suggestions (newest first, without this listener). */
     fun mentionNames(): List<String> =
         _messages.value.asReversed().filter { it.uid != identity.uid }.map { it.name }.distinct().take(20)
@@ -356,7 +327,6 @@ class ChatStore(
             "msg" -> {
                 val m = o["m"]?.let { runCatching { json.decodeFromJsonElement(ChatMsg.serializer(), it) }.getOrNull() } ?: return
                 val nonce = o.str("nonce")
-                if (typingAt.remove(m.uid) != null) refreshTyping()
                 _messages.update { old ->
                     val rest = if (nonce != null) old.filterNot { it.nonce == nonce } else old
                     if (rest.any { it.id == m.id && !it.pending }) rest else rest + m
@@ -379,7 +349,6 @@ class ChatStore(
                 val r = o["reactions"]?.let { runCatching { json.decodeFromJsonElement(ReactionsSerializer, it) }.getOrNull() } ?: emptyMap()
                 _messages.update { old -> old.map { if (it.id == id && !it.pending) it.copy(reactions = r) else it } }
             }
-            "typing" -> onTyping(o.str("uid") ?: return, o.str("name") ?: "Mehmon")
             "user" -> _user.value = runCatching { json.decodeFromJsonElement(UserCard.serializer(), o) }.getOrNull()
             "error" -> o.str("text")?.let { _errors.tryEmit(it) }
         }

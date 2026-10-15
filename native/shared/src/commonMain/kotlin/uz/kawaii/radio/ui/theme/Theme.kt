@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.Font
 import uz.kawaii.radio.res.Res
 import uz.kawaii.radio.res.dotgothic16
+import uz.kawaii.radio.res.galmuri11
 import uz.kawaii.radio.res.inter_400
 import uz.kawaii.radio.res.inter_600
 import uz.kawaii.radio.res.inter_700

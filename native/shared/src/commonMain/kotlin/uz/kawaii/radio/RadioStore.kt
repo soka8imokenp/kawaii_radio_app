@@ -22,6 +22,9 @@ import uz.kawaii.radio.chat.ChatStore
 import uz.kawaii.radio.chat.PublicCard
 import kotlinx.coroutines.flow.combine
 import uz.kawaii.radio.data.mainArtist
+import uz.kawaii.radio.data.Artist
+import uz.kawaii.radio.data.cachedArtists
+import uz.kawaii.radio.data.parseArtists
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -97,6 +100,16 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
 
     private val _tracks = MutableStateFlow<List<Track>>(emptyList())
     val tracks: StateFlow<List<Track>> = _tracks.asStateFlow()
+
+    private val _artists = MutableStateFlow(cachedArtists(kv))
+    /** Artist pages (Qidiruv), from the cloud's data/artists.json. */
+    val artists: StateFlow<List<Artist>> = _artists.asStateFlow()
+
+    fun artist(id: String?): Artist? = _artists.value.firstOrNull { it.id == id }
+
+    /** Songs of [a] in our catalogue, the ones listened to most first. */
+    fun songsOf(a: Artist): List<Track> =
+        _tracks.value.filter { a.sings(it.artist) }.sortedByDescending { _stats.value[it.id]?.seconds ?: 0L }
 
     private val _likes = MutableStateFlow(saved0.likes)
     /** Liked song id → when it was liked. */
@@ -362,6 +375,10 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     /** Pulls the cloud playlist; called on launch and whenever the app comes back to the foreground. */
     fun refreshCatalog() {
         if (!_ready.value) return
+        scope.launch {
+            val text = runCatching { platform.httpGetText("$CLOUD_URL/files/data/artists.json") }.getOrNull() ?: return@launch
+            parseArtists(kv, text)?.let { _artists.value = it }
+        }
         scope.launch {
             val text = runCatching { platform.httpGetText("$CLOUD_URL/playlist.json") }.getOrNull() ?: return@launch
             // a broken answer must not wipe the songs we already have

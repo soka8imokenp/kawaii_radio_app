@@ -1,6 +1,8 @@
 package uz.kawaii.radio.ui.home
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.using
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ColorFilter
@@ -156,7 +158,18 @@ fun WaveLcd(t: Track, playing: Boolean, durationMs: Long, clock: State<Double>) 
             val pixel by produceState<ImageBitmap?>(null, t.coverArt) { value = store.platform.pixelCover(t.coverArt, 30) }
             var card by remember { mutableStateOf(false) }
             LaunchedEffect(t.id) { delay(950); card = true; delay(2400); card = false }
-            Crossfade(card && pixel != null && !tuning, animationSpec = tween(180)) { showCard ->
+            // like an LCD page flip: the old view slides up and fades, the new one rises from below
+            androidx.compose.animation.AnimatedContent(
+                card && pixel != null && !tuning,
+                transitionSpec = {
+                    (androidx.compose.animation.slideInVertically(tween(420, delayMillis = 60, easing = androidx.compose.animation.core.EaseOutCubic)) { it / 2 } +
+                        androidx.compose.animation.fadeIn(tween(360, delayMillis = 60))) togetherWith
+                        (androidx.compose.animation.slideOutVertically(tween(300, easing = androidx.compose.animation.core.EaseInCubic)) { -it / 2 } +
+                            androidx.compose.animation.fadeOut(tween(240))) using
+                        androidx.compose.animation.SizeTransform(clip = true)
+                },
+                label = "lcd-page",
+            ) { showCard ->
                 if (showCard) PixelCard(t, pixel) else Waveform(peaks, clock, duration, tuning) { store.seek(it) }
             }
 

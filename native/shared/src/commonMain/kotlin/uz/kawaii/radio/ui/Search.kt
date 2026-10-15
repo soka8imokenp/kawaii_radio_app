@@ -1,5 +1,9 @@
 package uz.kawaii.radio.ui
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.font.FontWeight
+import uz.kawaii.radio.ui.kit.LocalSound
+import uz.kawaii.radio.ui.kit.raised
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -100,12 +104,7 @@ fun Search(active: Boolean) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (q.isEmpty()) {
-                item(key = "artists-label") { SectionLabel("Ijrochilar") }
-                item(key = "artists") {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for ((name, n) in artists.take(24)) Chip("$name · $n", false) { query = name }
-                    }
-                }
+                item(key = "artists") { ArtistStrip() }
                 if (recentTracks.isNotEmpty()) {
                     item(key = "recent-label") { SectionLabel("Yaqinda tinglangan") }
                     items(recentTracks, key = { "r-" + it.id }) { t ->
@@ -125,6 +124,48 @@ fun Search(active: Boolean) {
                         t, t.id == engine.id, engine.playing, sub = t.category.uppercase(),
                         onClick = { focus.clearFocus(); if (t.id == engine.id) store.toggle() else store.play(t.id, ids) },
                         onLongClick = { ui.song = t.id },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Spotify-like row of artist cards with "Hammasini ko'rish"; a tap opens the artist page. */
+@Composable
+private fun ArtistStrip() {
+    val store = LocalStore.current
+    val ui = LocalUi.current
+    val sound = LocalSound.current
+    val artists by store.artists.collectAsState()
+    val tracks by store.tracks.collectAsState()
+    if (artists.isEmpty()) return
+    val top = remember(artists, tracks) { artists.sortedByDescending { a -> tracks.count { a.sings(it.artist) } }.take(12) }
+    Column(Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(20.dp)).padding(vertical = 12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            BasicText("IJROCHILAR", Modifier.weight(1f), style = T.micro(12.sp, K.inkSoft))
+            BasicText(
+                "Hammasini ko'rish ›",
+                Modifier.raised(RoundedCornerShape(10.dp)).tap(onClick = { sound.press(); ui.artists = true }).padding(horizontal = 10.dp, vertical = 5.dp),
+                style = T.pixel(12.sp, K.ink),
+            )
+        }
+        androidx.compose.foundation.lazy.LazyRow(
+            Modifier.padding(top = 12.dp).fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(top.size, key = { top[it].id }) { i ->
+                val a = top[i]
+                Column(
+                    Modifier.width(84.dp).tap(onClick = { sound.press(); ui.artist = a.id }),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    uz.kawaii.radio.ui.sheets.ArtistPhoto(a, 72.dp)
+                    BasicText(
+                        a.name, Modifier.padding(top = 6.dp),
+                        style = T.pixel(12.sp, K.ink, weight = FontWeight.SemiBold).copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
             }

@@ -51,6 +51,8 @@ import uz.kawaii.radio.ui.sheets.ArtistSheet
 import uz.kawaii.radio.ui.sheets.AvatarSheet
 import uz.kawaii.radio.ui.sheets.InfoSheet
 import uz.kawaii.radio.ui.sheets.LibrarySheet
+import uz.kawaii.radio.ui.sheets.AllArtistsSheet
+import uz.kawaii.radio.ui.sheets.ArtistSheet
 import uz.kawaii.radio.ui.sheets.LeaveLiveSheet
 import uz.kawaii.radio.ui.sheets.PremiumSheet
 import uz.kawaii.radio.ui.sheets.SongSheet
@@ -81,6 +83,9 @@ class UiState {
     var artistPicker by mutableStateOf(false)
     var wrapped by mutableStateOf(false)
     var library by mutableStateOf(false)
+    /** "Hammasini ko'rish" list of artists, and the artist page on top of it. */
+    var artists by mutableStateOf(false)
+    var artist by mutableStateOf<String?>(null)
     var update by mutableStateOf<UpdateInfo?>(null)
     var updateBusy by mutableStateOf(false)
     /** Set by Home while its lyrics drawer is open; closes it. */
@@ -97,6 +102,8 @@ class UiState {
         if (avatarPicker) { avatarPicker = false; return true }
         if (artistPicker) { artistPicker = false; return true }
         if (wrapped) { wrapped = false; return true }
+        if (artist != null) { artist = null; return true }
+        if (artists) { artists = false; return true }
         if (library) { library = false; return true }
         closeDrawer?.let { it(); return true }
         if (page != Page.Home) { page = Page.Home; return true }
@@ -172,6 +179,8 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
             }
 
             LibrarySheet(open = ui.library, onClose = { ui.library = false })
+            AllArtistsSheet(open = ui.artists, onClose = { ui.artists = false })
+            ArtistSheet(id = ui.artist, onClose = { ui.artist = null })
             SongSheet(id = ui.song, onClose = { ui.song = null })
             InfoSheet(id = ui.info, onClose = { ui.info = null })
             PremiumSheet(open = ui.premium, onClose = { ui.premium = false })

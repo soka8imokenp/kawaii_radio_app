@@ -132,13 +132,7 @@ fun Chat(active: Boolean) {
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        val typing by chat.typing.collectAsState()
-        val sub = when {
-            !connected -> "Ulanmoqda…"
-            typing.size == 1 -> "${typing[0]} yozmoqda…"
-            typing.size > 1 -> "${typing.size} kishi yozmoqda…"
-            else -> "$online onlayn · $live LIVE'da"
-        }
+        val sub = if (connected) "$online onlayn · $live LIVE'da" else "Ulanmoqda…"
         PageHeader("Chat", sub) {
             // the mini player moves up here on this page: cover, song and artist in the corner
             AnimatedVisibility(
@@ -232,7 +226,7 @@ fun Chat(active: Boolean) {
                 ) {
                     if (draft.isEmpty()) BasicText("XABAR YOZING…", style = T.pixel(15.sp, K.lcdInk.copy(alpha = 0.4f), lh = 18.sp))
                     BasicTextField(
-                        draft, { if (it.length <= 1000) { draft = it; if (it.isNotBlank()) chat.typing() } },
+                        draft, { if (it.length <= 1000) draft = it },
                         Modifier.fillMaxWidth(),
                         maxLines = 4,
                         textStyle = T.pixel(15.sp, K.lcdInk, lh = 18.sp).copy(shadow = lcdShadow()),

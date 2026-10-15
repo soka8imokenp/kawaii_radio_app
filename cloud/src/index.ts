@@ -6,6 +6,7 @@
  *   GET    /radio                   public  – the live broadcast: which song plays when (same for everyone)
  *   GET    /chat                    public  – WebSocket of the global listeners' chat (see chat.ts)
  *   PUT    /api/stickers/<file>     token   – upload a sticker file (or pack.json) to stickers/
+ *   PUT    /api/data/<name>.json    token   – app data (artists.json…), served at /files/data/<name>.json
  *   POST   /api/tracks              token   – add a track (multipart or JSON with *_url fields)
  *   PATCH  /api/tracks/<id>         token   – change fields of a track (lyrics, info, category…)
  *   PUT    /api/tracks/<id>/cover   token   – replace the cover (multipart `cover` or JSON `cover_url`)
@@ -103,6 +104,16 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (path.startsWith('/api/')) {
     auth(req, env);
     const seg = path.split('/').filter(Boolean); // ['api','tracks',id?,'cover'?]
+    // app data files (e.g. artists.json): stored in data/, read by the app from /files/data/<name>.json
+    if (seg[1] === 'data' && seg[2] && m === 'PUT') {
+      const name = seg[2];
+      if (!/^[\w-]+\.json$/.test(name)) throw new HttpError(400, 'data file must be <name>.json');
+      const body = await req.text();
+      try { JSON.parse(body); } catch { throw new HttpError(400, 'not valid JSON'); }
+      if (body.length > 2 * 1024 * 1024) throw new HttpError(413, 'data file over 2 MB');
+      await env.BUCKET.put(`data/${name}`, body, { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
+      return json({ ok: true, url: `/files/data/${name}` });
+    }
     if (seg[1] === 'chat' && seg[2] === 'status' && m === 'GET') {
       return env.CHAT.get(env.CHAT.idFromName('global')).fetch(new Request(new URL('/chat/status', req.url)));
     }
