@@ -1,5 +1,6 @@
 package uz.kawaii.radio.ui
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -210,8 +211,9 @@ fun MiniPlayer(onOpen: () -> Unit) {
             ) {
                 Cover(t.coverArt, 40.dp, 8.dp)
                 Column(Modifier.weight(1f)) {
-                    BasicText(t.title, style = T.pixel(14.sp, K.ink, weight = FontWeight.SemiBold, lh = 16.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    BasicText(t.artist, style = T.pixel(12.sp, K.inkSoft, lh = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // long names run like a ticker on the player display
+                    BasicText(t.title, Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200, repeatDelayMillis = 1_500), style = T.pixel(14.sp, K.ink, weight = FontWeight.SemiBold, lh = 16.sp), maxLines = 1)
+                    BasicText(t.artist, Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200, repeatDelayMillis = 1_500), style = T.pixel(12.sp, K.inkSoft, lh = 14.sp), maxLines = 1)
                     Spacer(Modifier.height(5.dp))
                     // progress on a strip of LCD glass
                     Canvas(Modifier.fillMaxWidth().height(4.dp)) {

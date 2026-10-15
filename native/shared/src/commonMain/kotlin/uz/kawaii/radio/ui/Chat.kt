@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -344,12 +345,12 @@ private fun NowPlayingChip() {
         Cover(t.coverArt, 34.dp, 7.dp)
         Column(Modifier.padding(end = 4.dp)) {
             BasicText(
-                t.title, style = T.pixel(13.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold, lh = 15.sp),
-                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                t.title, Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200, repeatDelayMillis = 1_500),
+                style = T.pixel(13.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold, lh = 15.sp), maxLines = 1,
             )
             BasicText(
-                (if (engine.playing) "♪ " else "") + t.artist, style = T.pixel(11.sp, K.inkSoft, lh = 13.sp),
-                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                (if (engine.playing) "♪ " else "") + t.artist, Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200, repeatDelayMillis = 1_500),
+                style = T.pixel(11.sp, K.inkSoft, lh = 13.sp), maxLines = 1,
             )
         }
     }
