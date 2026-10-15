@@ -1,5 +1,11 @@
 package uz.kawaii.radio.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -116,7 +122,14 @@ fun Chat(active: Boolean) {
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        PageHeader("Chat", if (connected) "$online onlayn · $live LIVE'da" else "Ulanmoqda…")
+        PageHeader("Chat", if (connected) "$online onlayn · $live LIVE'da" else "Ulanmoqda…") {
+            // the mini player moves up here on this page: cover, song and artist in the corner
+            AnimatedVisibility(
+                active,
+                enter = fadeIn(tween(260, delayMillis = 120)) + slideInHorizontally(tween(320, delayMillis = 120)) { it / 2 },
+                exit = fadeOut(tween(150)) + slideOutHorizontally(tween(200)) { it / 2 },
+            ) { NowPlayingChip() }
+        }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
@@ -304,4 +317,32 @@ private fun StickerView(id: String, size: Int) {
         return
     }
     AsyncImage(s.url, s.emoji, Modifier.size(size.dp), contentScale = ContentScale.Fit)
+}
+
+/** The song on air as a compact chip for the chat header; tapping it opens the radio. */
+@Composable
+private fun NowPlayingChip() {
+    val store = LocalStore.current
+    val ui = LocalUi.current
+    val tracks by store.tracks.collectAsState()
+    val engine by store.engine.collectAsState()
+    val t = store.current(tracks, engine.id) ?: return
+    Row(
+        Modifier.padding(start = 10.dp).widthIn(max = 190.dp).raised(RoundedCornerShape(13.dp))
+            .tap(onClick = { ui.page = Page.Home }).padding(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Cover(t.coverArt, 34.dp, 7.dp)
+        Column(Modifier.padding(end = 4.dp)) {
+            BasicText(
+                t.title, style = T.pixel(13.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold, lh = 15.sp),
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            BasicText(
+                (if (engine.playing) "♪ " else "") + t.artist, style = T.pixel(11.sp, K.inkSoft, lh = 13.sp),
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
 }

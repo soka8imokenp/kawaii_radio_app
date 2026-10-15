@@ -156,7 +156,8 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
                 // while typing (chat, search) the keyboard takes the bottom: the player and the nav step aside,
                 // so the text field sits right on the keyboard
                 val typing = imeVisible()
-                AnimatedVisibility(!onHome && !typing, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                // on the chat page the player sits in the header instead (Chat.kt: NowPlayingChip)
+                AnimatedVisibility(!onHome && ui.page != Page.Chat && !typing, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                     MiniPlayer(onOpen = { ui.page = Page.Home })
                 }
                 if (!typing) NavBar(ui.page) { ui.page = it }
