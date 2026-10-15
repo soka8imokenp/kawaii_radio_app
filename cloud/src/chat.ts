@@ -99,6 +99,7 @@ export class ChatRoom extends DurableObject<Env> {
 
   async fetch(req: Request): Promise<Response> {
     if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/push')) return this.registerPush(req);
+    if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/avatar')) return this.uploadAvatar(req);
     if (req.method === 'GET' && new URL(req.url).pathname.endsWith('/status')) {
       // diagnostics (the Worker only lets this through with the upload token)
       const tokens = this.sql.exec('SELECT COUNT(*) AS n FROM push').one().n;
@@ -198,7 +199,7 @@ export class ChatRoom extends DurableObject<Env> {
       if (uid.length < 8 || key.length < 16) return this.send(ws, { type: 'error', text: 'bad hello' });
       const hash = await sha256(key);
       const name = clean(m.name, 32) || 'Mehmon';
-      const avatar = clean(m.avatar, 16) || 'p:0';
+      const avatar = clean(m.avatar, 80) || 'p:0';
       const user = this.sql.exec('SELECT * FROM users WHERE uid = ?', uid).toArray()[0];
       if (user && user.keyhash !== hash) return this.send(ws, { type: 'error', text: 'bu ID boshqa telefonga tegishli' });
       const card = cardOf(m.card);
@@ -290,7 +291,7 @@ export class ChatRoom extends DurableObject<Env> {
       }
       case 'profile': {
         const name = clean(m.name, 32) || a.name || 'Mehmon';
-        const avatar = clean(m.avatar, 16) || a.avatar || 'p:0';
+        const avatar = clean(m.avatar, 80) || a.avatar || 'p:0';
         this.sql.exec('UPDATE users SET name = ?, avatar = ?, card = COALESCE(?, card), seen = ? WHERE uid = ?', name, avatar, cardOf(m.card), Date.now(), a.uid);
         return this.setAtt(ws, { ...a, name, avatar });
       }
@@ -316,6 +317,22 @@ export class ChatRoom extends DurableObject<Env> {
         return this.broadcast(this.presence());
       }
     }
+  }
+
+  /* ---------- avatars: a listener's own photo, shown to everybody ---------- */
+
+  private async uploadAvatar(req: Request): Promise<Response> {
+    const uid = clean(req.headers.get('X-Chat-Uid'), 64);
+    const key = clean(req.headers.get('X-Chat-Key'), 128);
+    const user = this.sql.exec('SELECT keyhash FROM users WHERE uid = ?', uid).toArray()[0];
+    if (!user || user.keyhash !== (await sha256(key))) return Response.json({ ok: false, error: 'wrong key' }, { status: 403 });
+    const body = await req.arrayBuffer();
+    if (!body.byteLength || body.byteLength > 300 * 1024) return Response.json({ ok: false, error: 'photo must be under 300 KB' }, { status: 413 });
+    await this.env.BUCKET.put(`avatars/${uid}.jpg`, body, { httpMetadata: { contentType: 'image/jpeg' } });
+    // the version in the value makes every phone fetch the new photo instead of a cached one
+    const avatar = `u:${uid}:${Date.now().toString(36)}`;
+    this.sql.exec('UPDATE users SET avatar = ? WHERE uid = ?', avatar, uid);
+    return Response.json({ ok: true, avatar });
   }
 
   /* ---------- push notifications (Firebase Cloud Messaging) ---------- */

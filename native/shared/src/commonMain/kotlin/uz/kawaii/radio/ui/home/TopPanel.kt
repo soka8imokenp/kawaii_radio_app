@@ -213,7 +213,10 @@ private fun BoxScope.AmbientGlow(cover: String, playing: Boolean) {
     // a clock that runs at full speed while playing and creeps while paused
     val speed by animateFloatAsState(if (playing) 1f else 0.12f, tween(1200))
     val time = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
+    val active = uz.kawaii.radio.ui.LocalPageActive.current
+    // the clouds drift only while music plays on a visible page; otherwise they hold still (no redraws)
+    LaunchedEffect(playing, active) {
+        if (!playing || !active) return@LaunchedEffect
         var last = withFrameNanos { it }
         while (true) withFrameNanos { now ->
             time.floatValue += (now - last) / 1e9f * speed
@@ -470,9 +473,13 @@ private fun Modifier.fillMaxHeight12() = this.height(12.dp)
 
 /** Seconds since this composable appeared, ticking every frame. */
 @Composable
-fun rememberInfiniteTime(): State<Float> = produceState(0f) {
-    val start = androidx.compose.runtime.withFrameNanos { it }
-    while (true) androidx.compose.runtime.withFrameNanos { value = (it - start) / 1e9f }
+fun rememberInfiniteTime(): State<Float> {
+    val active = uz.kawaii.radio.ui.LocalPageActive.current
+    return produceState(0f, active) {
+        if (!active) return@produceState
+        val start = androidx.compose.runtime.withFrameNanos { it } - (value * 1e9f).toLong()
+        while (true) androidx.compose.runtime.withFrameNanos { value = (it - start) / 1e9f }
+    }
 }
 
 @Composable

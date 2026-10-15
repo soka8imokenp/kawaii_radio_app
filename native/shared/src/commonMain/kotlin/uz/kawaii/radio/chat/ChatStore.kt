@@ -102,6 +102,8 @@ data class Me(val uid: String, val admin: Boolean = false, val banned: Boolean =
 
 private const val ID_KEY = "chat-id"
 private const val READ_KEY = "chat-read"
+private const val AVATAR_KEY = "chat-avatar"
+private const val AVATAR_SRC_KEY = "chat-avatar-src"
 /** The reactions offered on a long press, like Telegram's quick row. */
 val REACTIONS = listOf("❤️", "🔥", "😂", "😭")
 private const val PUSH_KEY = "chat-push"
@@ -208,6 +210,7 @@ class ChatStore(
         scope.launch {
             // name / avatar / public card: only real changes, at most every couple of seconds
             combine(profile, card) { pr, c -> pr to c }.distinctUntilChanged().debounce(2_000).collect { (pr, c) ->
+                syncAvatar(pr)
                 send(buildJsonObject {
                     put("type", "profile"); put("name", displayName(pr)); put("avatar", shareableAvatar(pr))
                     put("card", json.encodeToJsonElement(PublicCard.serializer(), c))
@@ -222,9 +225,15 @@ class ChatStore(
     /** App back in the foreground: reconnect at once if the socket dropped meanwhile. */
     fun onResume() {
         foreground = true
+        // a new gallery photo keeps avatar = "photo": check the file itself when coming back
+        if (started) scope.launch {
+            val before = p.kv.get(AVATAR_KEY)
+            syncAvatar(profile.value)
+            if (p.kv.get(AVATAR_KEY) != before) send(buildJsonObject { put("type", "profile"); put("name", displayName(profile.value)); put("avatar", shareableAvatar(profile.value)) })
+        }
         sendViewing()
         if (isReading) markRead()
-        if (started && !_connected.value) { reconnectJob?.cancel(); retry = 0; connect() }
+        if (started && !_connected.value && !connecting) { reconnectJob?.cancel(); retry = 0; connect() }
     }
 
     fun onPause() {
@@ -275,11 +284,18 @@ class ChatStore(
         runCatching { p.httpPostJson("$CLOUD_URL/chat/push", body) }
     }
 
+    /** Bumped for every new socket: events of an older, replaced socket are ignored (no reconnect storms). */
+    private var generation = 0
+    private var connecting = false
+
     private fun connect() {
+        val gen = ++generation
+        connecting = true
         socket?.close()
         val url = CLOUD_URL.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/chat"
         socket = p.openSocket(url, object : SocketListener {
             override fun onOpen() {
+                if (gen != generation) return
                 retry = 0
                 val pr = profile.value
                 send(buildJsonObject {
@@ -289,8 +305,10 @@ class ChatStore(
                     put("card", json.encodeToJsonElement(PublicCard.serializer(), card.value))
                 }, force = true)
             }
-            override fun onMessage(text: String) = handle(text)
+            override fun onMessage(text: String) { if (gen == generation) handle(text) }
             override fun onClosed(error: String?) {
+                if (gen != generation) return
+                connecting = false
                 _connected.value = false
                 // messages that never left stay visible as failed until the next try
                 reconnectJob?.cancel()
@@ -312,6 +330,7 @@ class ChatStore(
         fun msgs(key: String) = o[key]?.jsonArray?.mapNotNull { runCatching { json.decodeFromJsonElement(ChatMsg.serializer(), it) }.getOrNull() }.orEmpty()
         when (o.str("type")) {
             "welcome" -> {
+                connecting = false
                 _connected.value = true
                 o["you"]?.jsonObject?.let(::applyMe)
                 val history = msgs("history")
@@ -432,8 +451,23 @@ class ChatStore(
 
     private fun displayName(pr: Profile) = pr.name.trim().ifEmpty { "Mehmon" }
 
-    /** Gallery photos stay on the phone; others see the pixel avatar. */
-    private fun shareableAvatar(pr: Profile) = if (pr.avatar.startsWith("p:")) pr.avatar else "p:0"
+    /** Pixel avatars go as they are; a gallery photo goes as its uploaded copy ("u:<uid>:<version>"). */
+    private fun shareableAvatar(pr: Profile) =
+        if (pr.avatar.startsWith("p:")) pr.avatar else p.kv.get(AVATAR_KEY) ?: "p:0"
+
+    /** Uploads the profile photo when it is new, so other listeners see it in the chat. */
+    private suspend fun syncAvatar(pr: Profile) {
+        if (pr.avatar != "photo") return
+        val src = p.avatarPhoto() ?: return
+        if (src == p.kv.get(AVATAR_SRC_KEY) && p.kv.get(AVATAR_KEY) != null) return
+        val bytes = p.avatarJpeg() ?: return
+        val text = runCatching {
+            p.httpPostBytes("$CLOUD_URL/chat/avatar", bytes, mapOf("X-Chat-Uid" to identity.uid, "X-Chat-Key" to identity.key))
+        }.getOrNull() ?: return
+        val avatar = runCatching { json.parseToJsonElement(text).jsonObject.str("avatar") }.getOrNull() ?: return
+        p.kv.set(AVATAR_KEY, avatar)
+        p.kv.set(AVATAR_SRC_KEY, src)
+    }
 }
 
 private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull

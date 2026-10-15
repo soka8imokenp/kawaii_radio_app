@@ -121,7 +121,7 @@ fun BaseSheet(
 
 /** Standard sheet: handle, embossed title, "Yopish" key, scrolling body. */
 @Composable
-fun Sheet(open: Boolean, onClose: () -> Unit, title: String, content: @Composable ColumnScope.() -> Unit) {
+fun Sheet(open: Boolean, onClose: () -> Unit, title: String, scroll: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     BaseSheet(open, onClose) {
         Box(Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
             Box(Modifier.size(56.dp, 6.dp).tray(CircleShape))
@@ -133,7 +133,11 @@ fun Sheet(open: Boolean, onClose: () -> Unit, title: String, content: @Composabl
             }
         }
         GrooveH(Modifier.padding(horizontal = 20.dp))
-        Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp)) {
+        // scroll = false: the content scrolls itself (a lazy grid / list), only what is on screen is built
+        Column(
+            Modifier.fillMaxWidth().weight(1f, fill = false)
+                .then(if (scroll) Modifier.verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp) else Modifier),
+        ) {
             content()
         }
     }

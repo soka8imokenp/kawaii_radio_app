@@ -38,6 +38,10 @@ interface Platform {
     suspend fun pickAvatarPhoto(): String?
     /** The stored avatar photo, if any. */
     fun avatarPhoto(): String?
+    /** The avatar photo as a small JPEG (about 192 px) for the chat, or null when there is none. */
+    suspend fun avatarJpeg(): ByteArray?
+    /** POSTs raw bytes; returns the response text, throws on network errors or non-2xx answers. */
+    suspend fun httpPostBytes(url: String, body: ByteArray, headers: Map<String, String>): String
 
     /** Keeps the song on the device so it plays offline; returns false when it could not be stored. */
     suspend fun saveOffline(trackId: String, uri: String, onProgress: (Float) -> Unit = {}): Boolean

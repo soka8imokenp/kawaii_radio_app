@@ -67,6 +67,8 @@ import uz.kawaii.radio.ui.theme.rememberFonts
 enum class Page { Home, Search, Chat, Liked, Profile }
 
 val LocalStore = staticCompositionLocalOf<RadioStore> { error("store not provided") }
+/** False on pages that are composed but hidden: per-frame animations there stand still. */
+val LocalPageActive = androidx.compose.runtime.compositionLocalOf { true }
 val LocalUi = staticCompositionLocalOf<UiState> { error("ui not provided") }
 
 /** Screen-level state the system back button can unwind. */
@@ -175,7 +177,12 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
                 AnimatedVisibility(!onHome && ui.page != Page.Chat && !typing, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                     MiniPlayer(onOpen = { ui.page = Page.Home })
                 }
-                if (!typing) NavBar(ui.page) { ui.page = it }
+                // the nav folds away and back smoothly with the keyboard instead of popping
+                AnimatedVisibility(
+                    !typing,
+                    enter = expandVertically(tween(260, easing = EaseOutQuint)) + fadeIn(tween(200, delayMillis = 60)),
+                    exit = shrinkVertically(tween(220, easing = EaseOutQuint)) + fadeOut(tween(120)),
+                ) { NavBar(ui.page) { ui.page = it } }
             }
 
             LibrarySheet(open = ui.library, onClose = { ui.library = false })
@@ -217,13 +224,13 @@ private fun Pages(ui: UiState) {
                 }
                 .then(if (active) Modifier else Modifier.blockInput()),
         ) {
-            when (p) {
+            CompositionLocalProvider(LocalPageActive provides active) { when (p) {
                 Page.Home -> Home(ui)
                 Page.Search -> Search(active)
                 Page.Chat -> Chat(active)
                 Page.Liked -> Liked(onOpenRadio = { ui.page = Page.Home })
                 Page.Profile -> Profile(ui)
-            }
+            } }
         }
     }
 }

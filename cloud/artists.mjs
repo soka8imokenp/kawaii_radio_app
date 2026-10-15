@@ -63,9 +63,19 @@ async function deezer(name, songs) {
     const score = overlap * 1_000_000 + (a.nb_fan ?? 0);
     if (!best || score > best.score) best = { a, score, overlap };
   }
-  const pic = best.a.picture_xl;
+  return described(best.a, best.overlap);
+}
+
+/** Pictures (500 px for the page, 250 px for lists) and the artist's real top songs on Deezer. */
+async function described(a, overlap) {
   // Deezer's placeholder for artists without a picture has an empty hash in the url
-  return { id: best.a.id, fans: best.a.nb_fan, overlap: best.overlap, picture: pic && !pic.includes('/artist//') ? pic : null };
+  const ok = (u) => (u && !u.includes('/artist//') ? u : null);
+  const top = ((await get(`https://api.deezer.com/artist/${a.id}/top?limit=25`)).data ?? [])
+    .map((t) => t.title_short || t.title)
+    // versions of the same song (live, remix, instrumental, TV size…) and covers are not "popular songs"
+    .filter((t) => !/\b(live|remix|instrumental|inst\.|tv size|acoustic|ver\.|version|cover|karaoke)\b/i.test(t));
+  const known = [...new Map(top.map((t) => [norm(t), t])).values()].slice(0, 6);
+  return { id: a.id, fans: a.nb_fan, overlap, picture: ok(a.picture_big), thumb: ok(a.picture_medium), known };
 }
 
 const artists = [];
@@ -74,20 +84,22 @@ for (const [, e] of byKey) {
   const bio = bios[id] ?? {};
   // artists-bio.json can pin the right Deezer page ("deezer": id) or turn the picture off ("deezer": null)
   const d = 'deezer' in bio
-    ? (bio.deezer == null ? null : await get(`https://api.deezer.com/artist/${bio.deezer}`).then((a) => ({ id: a.id, fans: a.nb_fan, overlap: 'pinned', picture: a.picture_xl })).catch(() => null))
+    ? (bio.deezer == null ? null : await get(`https://api.deezer.com/artist/${bio.deezer}`).then((a) => described(a, 'pinned')).catch(() => null))
     : await deezer(e.name, e.songs).catch(() => null);
   artists.push({
     id,
     name: bio.name ?? e.name,
     aliases: [...new Set([...e.aliases, ...(bio.aliases ?? [])])],
     picture: d?.picture ?? null,
+    thumb: d?.thumb ?? null,
     pictureSource: d?.picture ? 'Deezer' : null,
     genre: bio.genre ?? '',
     origin: bio.origin ?? '',
     since: bio.since ?? '',
     tagline: bio.tagline ?? '',
     bio: bio.bio ?? [],
-    known: bio.known ?? [],
+    // real popularity first (Deezer's top songs); my hand-written list only when Deezer knows too few
+    known: (d?.known?.length ?? 0) >= 5 ? d.known : (bio.known ?? []),
   });
   console.log(`${d?.picture ? '🖼' : '··'} ${bio.bio ? '📝' : '··'} ${e.name}${d ? `  (deezer ${d.id}, ${d.fans} fans, ${d.overlap} songs match)` : '  (not on Deezer)'}`);
 }

@@ -160,6 +160,38 @@ class AndroidPlatform(private val context: Context) : Platform {
 
     override fun avatarPhoto(): String? = avatarFile.takeIf { it.length() > 0 }?.let { Uri.fromFile(it).toString() + "?v=" + it.lastModified() }
 
+    override suspend fun avatarJpeg(): ByteArray? = withContext(Dispatchers.IO) {
+        if (avatarFile.length() == 0L) return@withContext null
+        runCatching {
+            val src = android.graphics.BitmapFactory.decodeFile(avatarFile.path) ?: return@runCatching null
+            val side = minOf(src.width, src.height)
+            val square = android.graphics.Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+            val small = android.graphics.Bitmap.createScaledBitmap(square, 192, 192, true)
+            java.io.ByteArrayOutputStream().use { out ->
+                small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+                out.toByteArray()
+            }
+        }.getOrNull()
+    }
+
+    override suspend fun httpPostBytes(url: String, body: ByteArray, headers: Map<String, String>): String = withContext(Dispatchers.IO) {
+        val c = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            doOutput = true
+            setRequestProperty("Content-Type", "application/octet-stream")
+            headers.forEach { (k, v) -> setRequestProperty(k, v) }
+        }
+        try {
+            c.outputStream.use { it.write(body) }
+            if (c.responseCode !in 200..299) error("HTTP ${c.responseCode}")
+            c.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            c.disconnect()
+        }
+    }
+
     override suspend fun pickAvatarPhoto(): String? {
         val a = activity ?: return null
         val wait = CompletableDeferred<Uri?>().also { picking = it }

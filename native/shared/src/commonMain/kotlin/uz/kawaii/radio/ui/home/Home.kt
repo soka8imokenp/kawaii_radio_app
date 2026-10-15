@@ -91,9 +91,11 @@ fun tabList(tab: Tab, tracks: List<Track>, saved: List<String>): List<Entry> =
 @Composable
 fun rememberClock(audio: AudioEngine, playing: Boolean): State<Double> {
     val clock = remember { mutableDoubleStateOf(audio.positionMs() / 1000.0) }
-    LaunchedEffect(playing) {
+    val active = uz.kawaii.radio.ui.LocalPageActive.current
+    LaunchedEffect(playing, active) {
         while (true) {
-            if (playing) withFrameNanos { } else delay(200)
+            // every frame only while it is playing on screen; hidden page: once a second is plenty
+            if (playing && active) withFrameNanos { } else delay(if (active) 200 else 1_000)
             clock.doubleValue = audio.positionMs() / 1000.0
         }
     }

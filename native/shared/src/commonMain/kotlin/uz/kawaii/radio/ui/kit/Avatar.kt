@@ -1,6 +1,7 @@
 package uz.kawaii.radio.ui.kit
 
 import androidx.compose.foundation.background
+import uz.kawaii.radio.ui.theme.K
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -67,6 +68,17 @@ fun AvatarView(avatar: String, photo: String?, size: Dp, modifier: Modifier = Mo
     if (avatar == "photo" && photo != null) {
         AsyncImage(photo, null, modifier.then(inner), contentScale = ContentScale.Crop)
         return
+    }
+    // somebody's own photo, uploaded to the cloud: "u:<uid>:<version>"
+    if (avatar.startsWith("u:")) {
+        val parts = avatar.split(':')
+        if (parts.size >= 3) {
+            AsyncImage(
+                "${uz.kawaii.radio.data.CLOUD_URL}/files/avatars/${parts[1]}.jpg?v=${parts[2]}", null,
+                modifier.then(inner).background(K.base2), contentScale = ContentScale.Crop,
+            )
+            return
+        }
     }
     val n = avatar.removePrefix("p:").toIntOrNull()?.coerceIn(0, Avatars.all.lastIndex) ?: 0
     val (bg, glyph) = Avatars.all[n]

@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -48,7 +52,8 @@ fun ArtistPhoto(a: Artist, size: Dp, modifier: Modifier = Modifier) {
     val store = LocalStore.current
     val tracks by store.tracks.collectAsState()
     val fallback = remember(a, tracks) { tracks.firstOrNull { a.sings(it.artist) }?.coverArt }
-    val url = a.picture ?: fallback
+    // small avatars load the small picture: decoding big images for a grid is what made it stutter
+    val url = (if (size <= 100.dp) a.thumb ?: a.picture else a.picture ?: a.thumb) ?: fallback
     val m = modifier.size(size).clip(CircleShape).border(2.dp, K.lcdBorder.copy(alpha = 0.35f), CircleShape)
     if (url != null) {
         AsyncImage(url, a.name, m.background(K.base2), contentScale = ContentScale.Crop)
@@ -70,16 +75,17 @@ fun AllArtistsSheet(open: Boolean, onClose: () -> Unit) {
     val tracks by store.tracks.collectAsState()
     // the most-played artists in our catalogue first
     val sorted = remember(artists, tracks) { artists.sortedByDescending { a -> tracks.count { a.sings(it.artist) } } }
-    Sheet(open, onClose, "Ijrochilar") {
-        FlowRow(
+    Sheet(open, onClose, "Ijrochilar", scroll = false) {
+        // lazy grid: only the avatars on screen are built and loaded, so it scrolls without stutter
+        LazyVerticalGrid(
+            GridCells.Fixed(3),
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            maxItemsInEachRow = 3,
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            for (a in sorted) {
+            items(sorted, key = { it.id }) { a ->
                 Column(
-                    Modifier.width(96.dp).tap(onClick = { sound.press(); ui.artist = a.id }),
+                    Modifier.fillMaxWidth().tap(onClick = { sound.press(); ui.artist = a.id }),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     ArtistPhoto(a, 76.dp)
@@ -105,7 +111,8 @@ fun ArtistSheet(id: String?, onClose: () -> Unit) {
     val a = remember(id, artists) { artists.firstOrNull { it.id == id } }
     Sheet(id != null && a != null, onClose, "Ijrochi") {
         if (a == null) return@Sheet
-        val songs = remember(a) { store.songsOf(a) }
+        // two or three of ours are enough: the page is about the artist, not a playlist
+        val songs = remember(a) { store.songsOf(a).take(3) }
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             ArtistPhoto(a, 132.dp)
             BasicText(a.name, Modifier.padding(top = 12.dp), style = T.display(26.sp, K.ink, weight = FontWeight.SemiBold))
@@ -140,7 +147,7 @@ fun ArtistSheet(id: String?, onClose: () -> Unit) {
         }
 
         if (songs.isNotEmpty()) {
-            SectionLabel("Kawaii Radio'da · ${songs.size} ta qo'shiq")
+            SectionLabel("Kawaii Radio'da tinglang")
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val ids = songs.map { it.id }
                 for (t in songs) {

@@ -13,8 +13,10 @@ data class Artist(
     val name: String,
     /** Other spellings used in song credits ("ZUTOMAYO", "Zutomayo"…). */
     val aliases: List<String> = emptyList(),
-    /** Official artist picture, shown from its source (see [pictureSource]). */
+    /** Official artist picture (~500 px), shown from its source (see [pictureSource]). */
     val picture: String? = null,
+    /** The same picture small (~250 px) for avatars in lists. */
+    val thumb: String? = null,
     val pictureSource: String? = null,
     /** e.g. "J-Pop · Vocaloid" */
     val genre: String = "",
