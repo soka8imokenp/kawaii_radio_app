@@ -62,6 +62,8 @@ dependencies {
     implementation(libs.coil.gif) // animated chat stickers
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging) // chat push notifications
+    // Firebase pulls an old androidx.fragment; registerForActivityResult needs 1.3+ (lint blocks release builds otherwise)
+    implementation(libs.fragment)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
     implementation(libs.media3.datasource)
