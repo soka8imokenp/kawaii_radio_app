@@ -140,7 +140,11 @@ object K {
 }
 
 @Immutable
-class Fonts(val inter: FontFamily, val pixel: FontFamily, val lcd: FontFamily, val dot: FontFamily)
+/**
+ * pixel = Galmuri11: soft, readable pixel face with Latin, Cyrillic, kana and kanji (OFL, subset without Hangul);
+ * display = Pixelify Sans for headings and key caps; lcd = VT323; dot = DotGothic16 (lyrics).
+ */
+class Fonts(val inter: FontFamily, val pixel: FontFamily, val display: FontFamily, val lcd: FontFamily, val dot: FontFamily)
 
 val LocalFonts = staticCompositionLocalOf<Fonts> { error("fonts not provided") }
 
@@ -152,7 +156,9 @@ fun rememberFonts(): Fonts = Fonts(
         Font(Res.font.inter_700, FontWeight.Bold),
         Font(Res.font.inter_800, FontWeight.ExtraBold),
     ),
-    pixel = FontFamily(Font(Res.font.pixelify_500, FontWeight.Medium), Font(Res.font.pixelify_600, FontWeight.SemiBold)),
+    // regular only: Galmuri's bold has no Cyrillic, so bold is drawn by Compose from the regular face
+    pixel = FontFamily(Font(Res.font.galmuri11, FontWeight.Normal)),
+    display = FontFamily(Font(Res.font.pixelify_500, FontWeight.Medium), Font(Res.font.pixelify_600, FontWeight.SemiBold)),
     lcd = FontFamily(Font(Res.font.vt323)),
     dot = FontFamily(Font(Res.font.dotgothic16)),
 )
@@ -165,12 +171,17 @@ object T {
         TextStyle(fontFamily = LocalFonts.current.inter, fontSize = size, fontWeight = weight, color = color, lineHeight = lh, letterSpacing = ls, lineHeightStyle = Tight)
 
     /** font-pixel: Pixelify Sans 500, +0.03em */
-    @Composable fun pixel(size: TextUnit, color: Color = K.ink, ls: TextUnit = 0.03.em, weight: FontWeight = FontWeight.Medium, lh: TextUnit = TextUnit.Unspecified) =
-        TextStyle(fontFamily = LocalFonts.current.pixel, fontSize = size, fontWeight = weight, color = color, letterSpacing = ls, lineHeight = lh, lineHeightStyle = Tight)
+    // Galmuri's letters are ~30% taller than Pixelify's at the same size: 0.8× keeps every screen's proportions
+    @Composable fun pixel(size: TextUnit, color: Color = K.ink, ls: TextUnit = 0.01.em, weight: FontWeight = FontWeight.Normal, lh: TextUnit = TextUnit.Unspecified) =
+        TextStyle(fontFamily = LocalFonts.current.pixel, fontSize = size * 0.8f, fontWeight = weight, color = color, letterSpacing = ls, lineHeight = lh, lineHeightStyle = Tight)
+
+    /** Big titles and key caps: the chunkier Pixelify Sans. */
+    @Composable fun display(size: TextUnit, color: Color = K.ink, ls: TextUnit = 0.03.em, weight: FontWeight = FontWeight.Medium, lh: TextUnit = TextUnit.Unspecified) =
+        TextStyle(fontFamily = LocalFonts.current.display, fontSize = size, fontWeight = weight, color = color, letterSpacing = ls, lineHeight = lh, lineHeightStyle = Tight)
 
     /** .micro: compact uppercase hardware label */
     @Composable fun micro(size: TextUnit = 12.sp, color: Color = K.ctlInk, ls: TextUnit = 0.08.em) =
-        TextStyle(fontFamily = LocalFonts.current.pixel, fontSize = size, fontWeight = FontWeight.SemiBold, color = color, letterSpacing = ls, lineHeight = size, lineHeightStyle = Tight)
+        TextStyle(fontFamily = LocalFonts.current.display, fontSize = size, fontWeight = FontWeight.SemiBold, color = color, letterSpacing = ls, lineHeight = size, lineHeightStyle = Tight)
 
     @Composable fun lcd(size: TextUnit, color: Color = K.lcdInk, lh: TextUnit = TextUnit.Unspecified) =
         TextStyle(fontFamily = LocalFonts.current.lcd, fontSize = size, color = color, letterSpacing = 0.04.em, lineHeight = lh, lineHeightStyle = Tight)

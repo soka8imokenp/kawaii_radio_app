@@ -69,7 +69,7 @@ fun PageHeader(title: String, sub: String, trailing: (@Composable () -> Unit)? =
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                BasicText(title.uppercase(), style = T.pixel(24.sp, K.ink, ls = 0.06.em, weight = FontWeight.SemiBold, lh = 24.sp))
+                BasicText(title.uppercase(), style = T.display(24.sp, K.ink, ls = 0.06.em, weight = FontWeight.SemiBold, lh = 24.sp))
                 Spacer(Modifier.height(6.dp))
                 BasicText(sub, style = T.pixel(13.sp, K.inkSoft, lh = 15.sp))
             }
