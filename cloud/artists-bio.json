@@ -1,0 +1,401 @@
+{
+  "ado": {
+    "genre": "J-Pop · Rok",
+    "origin": "Tokio, Yaponiya",
+    "since": "2020-yildan",
+    "tagline": "Yuzini hech qachon ko'rsatmaydigan, ammo butun dunyo taniydigan ovoz",
+    "bio": [
+      "Ado — Yaponiyaning eng kuchli va eng sirli ovozlaridan biri. U hali o'smirligida internetda boshqalarning qo'shiqlarini kuylab, \"utaite\" sifatida tanilgan. 2020-yilda, atigi 17 yoshida chiqargan \"Usseewa\" qo'shig'i bir zumda butun mamlakatni larzaga soldi: g'azab, isyon va hayratlanarli vokal diapazoni bilan bu trek yoshlar madhiyasiga aylandi.",
+      "Ado yuzini omma oldida ko'rsatmaydi — uning o'rnida chizilgan obrazi chiqadi, konsertlarda esa sahnada faqat silueti ko'rinadi. Shunga qaramay, 2022-yilda \"One Piece Film Red\" filmidagi qahramon Uta uchun kuylagan qo'shiqlari (\"Shinjidai\" va boshqalar) uni xalqaro yulduzga aylantirdi. Uning ovozi bir qo'shiq ichida pichirlashdan tortib, xirillagan qichqiriqqa o'ta oladi — bu uning eng katta \"qurol\"idir.",
+      "2025-yildagi \"Hibana\" jahon turida u 500 mingdan ortiq tomoshabin yig'di va Los-Anjelesdagi Crypto.com Arena zalini to'ldirgan birinchi yapon ijrochisi bo'ldi. 2026-yilda Ado Yokogamadagi Nissan stadionida yakkaxon konsert berdi, Chikagodagi mashhur Lollapalooza festivalida ilk bor chiqdi va jahon bo'ylab vakillik qiluvchi WME agentligi bilan shartnoma imzoladi."
+    ],
+    "known": [
+      "Usseewa",
+      "Shinjidai",
+      "Odo",
+      "Show",
+      "Aishite Aishite Aishite",
+      "Readymade",
+      "Kura Kura"
+    ]
+  },
+  "9lana": {
+    "genre": "J-Pop · Lotin pop",
+    "origin": "Yaponiya",
+    "since": "2023-yildan",
+    "tagline": "To'qqiz xil ovozda kuylaydigan \"qo'shiq aktrisasi\"",
+    "bio": [
+      "9Lana o'zini \"utayakusha\" — qo'shiq aktrisasi deb ataydi, va bu bejiz emas. Uning nomidagi \"9\" raqami to'qqiz xil vokal ohangini anglatadi: har bir qo'shiqda u go'yo boshqa qahramonga aylanadi — goh nozik va mayin, goh xirillagan, dadil va o'tkir. Ayniqsa uning \"xirildoq\" tembri muxlislar tomonidan alohida sevib eshitiladi.",
+      "Lotin ritmlari bilan yo'g'rilgan \"BALALAIKA\" qo'shig'i 10 milliondan ortiq marta tinglanib, uning nomini keng tanitdi. 2024-yil aprelida u mashhur anime seriali uchun yakuniy qo'shiqni kuylab, yirik leybl (Sony Music) bilan rasmiy debyut qildi, shu yili esa ilk EP albomi \"DOLL\"ni chiqardi.",
+      "Uning \"Propose\" qo'shig'iga qilgan ijrosi nafaqat Yaponiyada, balki Amerika va Meksikadagi tinglovchilar orasida ham katta shuhrat qozondi va MUSIC AWARDS JAPAN mukofotida \"Yaponiyadan chiqqan eng yaxshi global xit\" nominatsiyasiga tanlandi. Rap, ballada, raqs musiqasi — 9Lana har janrda o'zini sinab ko'rishdan qo'rqmaydi."
+    ],
+    "known": [
+      "BALALAIKA",
+      "Propose",
+      "Right Pocket",
+      "Let me battle",
+      "BLUE MOON"
+    ]
+  },
+  "tele": {
+    "deezer": null,
+    "genre": "Indi-rok · Pop",
+    "origin": "Yaponiya",
+    "since": "2022-yildan",
+    "tagline": "Hamma narsani o'zi yozadigan yosh indi-rok ijodkori",
+    "bio": [
+      "Tele — 2000-yilda tug'ilgan musiqachi Kitaro Taniguchining yakkaxon loyihasi. U 2022-yilda faoliyat boshlagan va qo'shiqlarining so'zi, kuyi va aranjirovkasini to'liq o'zi yaratadi. Nomini u Fender Telecaster gitarasidan olgan: bu so'zning o'zida aniq ma'no yo'qligi unga yoqqan — loyiha ham faqat musiqa uchun \"ramka\" bo'lishi kerak, deb hisoblaydi.",
+      "Uning musiqasi indi-rok, yumshoq rok va pop oralig'ida: sodda gitara ohanglari ostida esa juda shaxsiy, ba'zan og'riqli, ba'zan iliq so'zlar yashiringan. \"Kujira no Ko\" (\"Kitning bolasi\") qo'shig'i chuqur, deyarli ruhiy kayfiyati bilan ko'pchilikning yuragiga yo'l topgan, \"Rokkusutaa\" esa uning eng jo'shqin treklaridan biri.",
+      "Qisqa vaqt ichida Tele Yaponiya yoshlari orasida eng ko'p muhokama qilinadigan yangi nomlardan biriga aylandi. Uning qo'shiqlarini tinglash — kimningdir kundaligini o'qishga o'xshaydi."
+    ],
+    "known": [
+      "Kujira no Ko",
+      "Rokkusutaa",
+      "DNA",
+      "Hanaikada",
+      "Houtai"
+    ]
+  },
+  "yorushika": {
+    "genre": "J-Rok · Indi-pop",
+    "origin": "Yaponiya",
+    "since": "2017-yildan",
+    "tagline": "Yuzsiz, ammo har bir albomi alohida hikoya bo'lgan duet",
+    "bio": [
+      "Yorushika — kompozitor n-buna va vokalistka suis'dan iborat duet. n-buna avval Vocaloid prodyuseri sifatida tanilgan, 2017-yilda esa suis bilan birga \"Yorushika\" (\"tun ekan, demak\") loyihasini boshladi. Ular deyarli hech qachon yuzlarini ko'rsatmaydi — barcha e'tibor musiqa va so'zlarga qaratilgan.",
+      "Yorushikaning o'ziga xosligi — albomlari yaxlit hikoyadan iborat. Masalan, 2019-yilgi \"Dakara Boku wa Ongaku wo Yameta\" va \"Elma\" albomlari bir-biriga xat yozayotgan ikki qahramon haqida. Sokin gitara, nostalgiya va she'riy so'zlar ularning qo'shiqlarini yozgi kechalar, yo'qotishlar va eslash haqidagi kichik kinoga aylantiradi.",
+      "\"Tada Kimi ni Hare\", \"Hana ni Bourei\", \"Itte.\" kabi qo'shiqlari yuz millionlab marta tinglangan. Yorushika — tinch va chuqur musiqani, so'zlarini o'ylab tinglash mumkin bo'lgan qo'shiqlarni sevadiganlar uchun eng yaxshi boshlang'ich nuqta."
+    ],
+    "known": [
+      "Tada Kimi ni Hare",
+      "Hana ni Bourei",
+      "Itte.",
+      "Hitchcock",
+      "Haru Dorobou"
+    ]
+  },
+  "hatsune-miku": {
+    "genre": "Vocaloid",
+    "origin": "Sapporo, Yaponiya",
+    "since": "2007-yildan",
+    "tagline": "Dunyodagi eng mashhur virtual qo'shiqchi",
+    "bio": [
+      "Hatsune Miku — inson emas, balki ovoz dasturi. 2007-yil 31-avgustda Crypton Future Media kompaniyasi uni Vocaloid ovoz sintezi kutubxonasi sifatida chiqardi; ovozi aktrisa Saki Fujitaning yozuvlari asosida yaratilgan. Firuza rangli ikki uzun soch o'rami bilan tasvirlangan bu qiz tez orada butun bir madaniyat ramziga aylandi.",
+      "Mikuning asosiy kuchi — u minglab mustaqil musiqachilarning qo'lidagi asbob. Har kim unga qo'shiq yozib, internetga joylashi mumkin edi, va shu yo'l bilan \"Senbonzakura\", \"World is Mine\", \"Melt\", \"Rolling Girl\" kabi afsonaviy treklar tug'ildi. Kenshi Yonezu, Ayase, DECO*27 kabi bugungi yulduzlarning ko'pchiligi aynan Miku uchun qo'shiq yozishdan boshlagan.",
+      "Miku gologramma ko'rinishida haqiqiy konsertlar beradi — \"Magical Mirai\" va \"MIKU EXPO\" turlari dunyo bo'ylab o'tkaziladi, \"Project SEKAI\" o'yini esa uni yangi avlodga tanitdi. 2007-yildan beri u qarimaydi, lekin har yili yangi qo'shiqlar bilan yangidan tug'iladi."
+    ],
+    "known": [
+      "Senbonzakura",
+      "World is Mine",
+      "Melt",
+      "Rolling Girl",
+      "Magical Cure! Love Shot!",
+      "Ievan Polkka"
+    ]
+  },
+  "vaundy": {
+    "genre": "J-Pop · Rok · Funk",
+    "origin": "Tokio, Yaponiya",
+    "since": "2019-yildan",
+    "tagline": "Musiqasini ham, klipini ham, dizaynini ham o'zi yaratadigan daho",
+    "bio": [
+      "Vaundy — 2000-yilda tug'ilgan, o'z ijodining har bir qismini o'zi boshqaradigan yapon musiqachisi. U qo'shiq yozadi, kuylaydi, aranjirovka qiladi, hatto albom muqovalari va kliplarining dizaynini ham o'zi o'ylab topadi. 2019-yilda internetga joylagan \"Tokyo Flash\" qo'shig'i bilan tanilib, juda qisqa vaqtda Yaponiyaning eng talabgir ijrochilaridan biriga aylandi.",
+      "Uning eng katta xususiyati — janrlar orasida erkin sakrash. Bir qo'shig'i funk va disko, boshqasi og'ir rok, uchinchisi esa iliq akustik ballada bo'lishi mumkin. \"Kaiju no Hanauta\", \"Odoriko\", \"Fukakoryoku\" kabi xitlari yuz millionlab marta tinglangan.",
+      "Anime muxlislari uni \"Chainsaw Man\" serialidagi \"CHAINSAW BLOOD\" qo'shig'i orqali yaxshi biladi. Bugun Vaundy katta arenalarda konsert beradi va yangi avlod yapon popining eng ko'p qirrali yuzlaridan biri hisoblanadi."
+    ],
+    "known": [
+      "Kaiju no Hanauta",
+      "Odoriko",
+      "Tokyo Flash",
+      "Fukakoryoku",
+      "CHAINSAW BLOOD",
+      "Hadaka no Yuusha"
+    ]
+  },
+  "kessoku-band": {
+    "genre": "Anime rok · Indi-rok",
+    "origin": "\"Bocchi the Rock!\" animesi",
+    "since": "2022-yildan",
+    "tagline": "Animedan chiqib, haqiqiy chartlarni zabt etgan guruh",
+    "bio": [
+      "Kessoku Band — \"Bocchi the Rock!\" (2022) animesidagi to'qima rok guruhi, ammo uning qo'shiqlari mutlaqo haqiqiy. Guruhda to'rt qiz bor: haddan tashqari uyatchan, lekin ajoyib gitarachi Hitori \"Bocchi\" Goto, barabanchi Nijika Ijichi, bas-gitarachi Ryo Yamada va vokalist Ikuyo Kita. Ularni Yoshino Aoyama, Sayumi Suzushiro, Saku Mizuno va Ikumi Hasegawa ovozlantirgan.",
+      "Serial yolg'izlik, uyatchanlik va do'stlik orqali o'zini topish haqida — shuning uchun guruh qo'shiqlari ko'plab tinglovchilar uchun shaxsiy bo'lib qoldi. 2022-yil dekabrida chiqqan \"Kessoku Band\" albomi Yaponiya chartlarining eng yuqori o'rinlariga chiqdi; qo'shiqlarni yaponiyaning taniqli indi-rok musiqachilari yozgan.",
+      "\"Seishun Complex\", \"Guitar to Kodoku to Aoi Hoshi\", \"Ano Band\" — bu treklar anime muxlislari uchun allaqachon klassikaga aylangan. 2024-yilda guruh filmlar uchun yangi qo'shiqlar bilan qaytdi va jonli konsertlarda ham chiqish qilmoqda."
+    ],
+    "known": [
+      "Seishun Complex",
+      "Guitar to Kodoku to Aoi Hoshi",
+      "Ano Band",
+      "Karakara",
+      "Distortion!!"
+    ]
+  },
+  "deco-27": {
+    "genre": "Vocaloid · Elektro-rok",
+    "origin": "Yaponiya",
+    "since": "2008-yildan",
+    "tagline": "Hatsune Mikuni yangi avlodga qayta tanitgan prodyuser",
+    "bio": [
+      "DECO*27 — Vocaloid sahnasining eng muvaffaqiyatli prodyuserlaridan biri. U 2008-yildan beri Hatsune Miku ovozi uchun qo'shiqlar yozadi va uning ishlari Niconico hamda YouTube'da yuz millionlab marta ko'rilgan. Uning uslubi — tez sur'atli elektro-rok, yorqin melodiyalar va ko'pincha qorong'i, injiq sevgi haqidagi so'zlar.",
+      "\"Mosaic Roll\", \"Ghost Rule\" kabi ilk xitlaridan keyin 2021-yilda chiqqan \"Vampire\" qo'shig'i uni yangi cho'qqiga olib chiqdi: trek butun dunyo bo'ylab TikTok va strimingda tarqalib, Vocaloid musiqasini yangi tinglovchilarga tanitdi. \"Rabbit Hole\" va \"Monitoring\" ham shu yo'lni davom ettirdi.",
+      "DECO*27 o'z qo'shiqlari uchun yorqin animatsion kliplar yaratadi va \"Project SEKAI\" o'yini bilan yaqin hamkorlik qiladi. U Vocaloid madaniyati qanchalik katta va tirik ekanini ko'rsatib turgan asosiy nomlardan biri."
+    ],
+    "known": [
+      "Vampire",
+      "Ghost Rule",
+      "Mosaic Roll",
+      "Rabbit Hole",
+      "Monitoring",
+      "Ai Kotoba"
+    ]
+  },
+  "radwimps": {
+    "genre": "Alternativ rok",
+    "origin": "Yokogama, Yaponiya",
+    "since": "2001-yildan",
+    "tagline": "Makoto Shinkai filmlarining musiqiy yuragi",
+    "bio": [
+      "RADWIMPS — 2001-yilda Yokogamada maktab o'quvchilari tomonidan tuzilgan rok guruhi. Guruh yuragi — vokalist va asosiy qo'shiq muallifi Yojiro Noda: uning so'zlari hayot, sevgi va tasodiflar haqida ko'pincha falsafiy va kutilmagan bo'ladi. Yillar davomida guruh Yaponiyaning eng yirik rok guruhlaridan biriga aylandi.",
+      "Dunyo RADWIMPSni asosan rejissyor Makoto Shinkai filmlari orqali taniydi. 2016-yildagi \"Kimi no Na wa\" (\"Sening isming\") filmi uchun yozilgan \"Zenzenzense\" va \"Sparkle\" qo'shiqlari film bilan birga butun dunyo bo'ylab tarqaldi. So'ng \"Tenki no Ko\" (2019) va \"Suzume\" (2022) filmlari uchun ham musiqa yozishdi; \"Suzume\" qo'shig'ini ular yosh xonanda Toaka bilan birga ijro etgan.",
+      "Guruh musiqasi orkestr va pianinodan tortib, og'ir gitara riflarigacha keng: bir filmning eng ta'sirli lahzasi ko'pincha aynan RADWIMPS qo'shig'i ostida o'tadi."
+    ],
+    "known": [
+      "Zenzenzense",
+      "Sparkle",
+      "Nandemonaiya",
+      "Ai ni Dekiru Koto wa Mada Aru Kai",
+      "Suzume",
+      "Hyperventilation"
+    ]
+  },
+  "eve": {
+    "deezer": 69128312,
+    "genre": "J-Pop · Rok",
+    "origin": "Yaponiya",
+    "since": "2009-yildan",
+    "tagline": "\"Jujutsu Kaisen\"ning birinchi openingi ortidagi ovoz",
+    "bio": [
+      "Eve — internetda \"utaite\" sifatida boshlagan va keyin to'liq mustaqil qo'shiq muallifiga aylangan yapon ijrochisi. U ham yuzini ko'rsatmaydi: uning dunyosi rang-barang animatsion kliplar orqali namoyon bo'ladi va bu kliplarning har biri o'ziga xos kichik multfilmga o'xshaydi.",
+      "2020-yilda \"Jujutsu Kaisen\" animesining birinchi openingi \"Kaikai Kitan\" Eve'ni xalqaro miqyosda tanitdi — qo'shiq yuz millionlab marta tinglanib, anime openinglari orasida eng sevimlilaridan biriga aylandi. Undan oldin ham \"Dramaturgy\", \"Kaishin no Ichigeki\" kabi treklar uni Yaponiya yoshlari orasida mashhur qilgan edi.",
+      "\"Ao no Waltz\" esa \"Josee, Yo'lbars va Baliqlar\" anime filmi uchun yozilgan nozik qo'shiq. Eve musiqasi — tez, energiyaga to'la gitara ritmlari va kutilmagan melodik burilishlar uyg'unligi."
+    ],
+    "known": [
+      "Kaikai Kitan",
+      "Dramaturgy",
+      "Ao no Waltz",
+      "Kaishin no Ichigeki",
+      "Tokyo Ghetto"
+    ]
+  },
+  "fujii-kaze": {
+    "genre": "J-Pop · Soul · R&B",
+    "origin": "Okayama, Yaponiya",
+    "since": "2019-yildan",
+    "tagline": "Pianinodagi kaverlardan dunyo sahnasiga chiqqan yigit",
+    "bio": [
+      "Fujii Kaze 1997-yilda Okayama viloyatida tug'ilgan. U 2010-yildan boshlab YouTube'ga pianino chalib kuylagan kaverlarini joylay boshladi — Yaponcha va G'arb qo'shiqlarini o'ziga xos soul uslubida qayta ijro etib, millionlab ko'rishlar to'pladi. 2020-yilda \"HELP EVER HURT NEVER\" debyut albomi bilan professional sahnaga chiqdi.",
+      "2022-yilda uning \"Shinunoga E-Wa\" qo'shig'i TikTok orqali butun Osiyo va dunyo bo'ylab virusday tarqaldi — so'zlarni tushunmagan odamlar ham uning bo'g'iq, iliq ovozi va jazz-soul ohangini sevib qoldi. \"Matsuri\", \"Kirari\", \"Michi Teyu Ku\" kabi qo'shiqlari ham katta muvaffaqiyat qozondi.",
+      "Fujii Kaze qo'shiqlarida hayot, o'zini qabul qilish va ichki xotirjamlik mavzulari ko'p uchraydi. Bugun u yirik stadion konsertlari va xalqaro turlari bilan yapon musiqasining global elchilaridan biri."
+    ],
+    "known": [
+      "Shinunoga E-Wa",
+      "Matsuri",
+      "Kirari",
+      "Michi Teyu Ku",
+      "Nan-Nan"
+    ]
+  },
+  "kenshi-yonezu": {
+    "genre": "J-Pop · Rok",
+    "origin": "Tokushima, Yaponiya",
+    "since": "2009-yildan",
+    "tagline": "\"Lemon\" va \"KICK BACK\" muallifi — zamonaviy J-Popning ustasi",
+    "bio": [
+      "Kenshi Yonezu 1991-yilda Tokushimada tug'ilgan. U faoliyatini \"Hachi\" taxallusi bilan Vocaloid prodyuseri sifatida boshlagan: \"Matryoshka\", \"Suna no Wakusei\" kabi Hatsune Miku qo'shiqlari internet klassikasiga aylangan. 2012-yildan u o'z ovozi bilan kuylay boshladi va qo'shiq yozish, rasm chizish, klip g'oyalarini o'zi yaratish bilan butun ijodiy olamini qurdi.",
+      "2018-yilda chiqqan \"Lemon\" qo'shig'i Yaponiya tarixidagi eng ko'p tinglangan treklardan biriga aylandi — uning klipi YouTube'da yuz millionlab ko'rishlar to'plagan. 2022-yilda \"Chainsaw Man\" openingi \"KICK BACK\" xalqaro miqyosda shu qadar mashhur bo'ldiki, u AQSh RIAA \"oltin\" sertifikatini olgan yaponcha qo'shiqlardan biri bo'ldi.",
+      "Keyinroq u Hayao Miyazakining \"Kalxat va bola\" filmi uchun \"Spinning Globe\"ni yozdi. 2025-yilda esa \"Chainsaw Man: Reze\" filmi uchun \"IRIS OUT\" va Hikaru Utada bilan duet \"JANE DOE\" qo'shiqlarini taqdim etdi. Yonezu — har bir yangi qo'shig'i katta voqeaga aylanadigan kam sonli ijrochilardan."
+    ],
+    "known": [
+      "Lemon",
+      "KICK BACK",
+      "Uma to Shika",
+      "Peace Sign",
+      "IRIS OUT",
+      "JANE DOE",
+      "Matryoshka"
+    ]
+  },
+  "zutomayo": {
+    "name": "ZUTOMAYO",
+    "aliases": [
+      "Zutomayo",
+      "Zutto Mayonaka de Ii no ni"
+    ],
+    "genre": "J-Pop · Funk-rok",
+    "origin": "Yaponiya",
+    "since": "2018-yildan",
+    "tagline": "\"Doim yarim tun bo'lsa edi\" — g'alati, chiroyli va ritmik",
+    "bio": [
+      "ZUTOMAYO — to'liq nomi \"Zutto Mayonaka de Ii no ni\" (\"Doim yarim tun bo'lsa edi\") bo'lgan musiqiy loyiha. Uning markazida — qo'shiqlarni yozadigan va kuylaydigan ACAね. Loyiha 2018-yilda \"Byoushin wo Kamu\" (\"Soat millarini tishlash\") qo'shig'i bilan boshlangan va birinchi qo'shig'idanoq internetda katta shov-shuvga sabab bo'lgan.",
+      "ZUTOMAYO ham yuzini ko'rsatmaydi, uning dunyosi esa ajoyib animatsion kliplar orqali ochiladi. Musiqasi — tez, murakkab va raqsbop: funk bas-gitarasi, jazzga o'xshash akkordlar va ACAnening tez-tez almashadigan so'zlari bir-biriga chirmashib ketgan. So'zlari esa yolg'izlik, uyqusizlik va yarim tundagi xayollar haqida.",
+      "\"Kan Saete Kuyashiiwa\", \"Study Me\", \"Mirror Tune\" kabi qo'shiqlari va anime filmlari uchun yozgan treklari ZUTOMAYO'ni Yaponiyadan tashqarida ham sevimli qildi."
+    ],
+    "known": [
+      "Byoushin wo Kamu",
+      "Kan Saete Kuyashiiwa",
+      "Study Me",
+      "Mirror Tune",
+      "Hunch Gray"
+    ]
+  },
+  "creepy-nuts": {
+    "genre": "Xip-xop",
+    "origin": "Yaponiya",
+    "since": "2013-yildan",
+    "tagline": "\"Bling-Bang-Bang-Born\" bilan dunyoni raqsga tushirgan duet",
+    "bio": [
+      "Creepy Nuts — rap ustasi R-Shitei va DJ Matsunaga'dan iborat xip-xop dueti. R-Shitei yapon freestyle-rap janglarining afsonasi, DJ Matsunaga esa dunyoning eng nufuzli DJ musobaqalarida g'olib bo'lgan. Ular 2013-yildan beri birga ishlaydi va yapon xip-xopini mainstream'ga olib chiqqan asosiy nomlardan biri.",
+      "2024-yil ular uchun haqiqiy portlash yili bo'ldi: \"Mashle\" animesining ikkinchi mavsumi uchun yozilgan \"Bling-Bang-Bang-Born\" qo'shig'i va uning raqsi butun dunyo bo'ylab TikTok trendiga aylandi va Billboard global chartlarida yuqori o'rinlarni egalladi. Shu yili \"Dandadan\" animesi openingi \"Otonoke\" ham xalqaro xitga aylandi.",
+      "R-Shitei'ning tez va aniq rap'i va DJ Matsunaga'ning ixtirochi bit'lari — Creepy Nuts musiqasini darhol tanib olish mumkin bo'lgan o'ziga xos imzo."
+    ],
+    "known": [
+      "Bling-Bang-Bang-Born",
+      "Otonoke",
+      "Nobodoka",
+      "Biri-Biri"
+    ]
+  },
+  "king-gnu": {
+    "genre": "Alternativ rok",
+    "origin": "Tokio, Yaponiya",
+    "since": "2017-yildan",
+    "tagline": "Klassik musiqa va rokni birlashtirgan Tokio guruhi",
+    "bio": [
+      "King Gnu — 2017-yilda hozirgi nomini olgan Tokio rok guruhi. Uning rahbari va asosiy kompozitori Daiki Tsuneta Tokio san'at universitetida klassik musiqa bo'yicha ta'lim olgan, shuning uchun guruh qo'shiqlarida orkestr ohanglari, murakkab akkordlar va kutilmagan burilishlar ko'p uchraydi. Vokalda Tsuneta'ning past ovozi va Satoru Iguchi'ning baland, tiniq tenori bir-birini to'ldiradi.",
+      "2019-yilgi \"Hakujitsu\" qo'shig'i guruhni Yaponiyaning eng mashhur rok guruhlaridan biriga aylantirdi. Anime muxlislari esa ularni \"Jujutsu Kaisen\"ning Shibuya hodisasi bobidagi opening \"SPECIALZ\" va film uchun yozilgan \"Ichizu\" orqali yaxshi biladi.",
+      "King Gnu konsertlari katta stadionlarda o'tadi, Tsuneta esa \"millennium parade\" loyihasi bilan zamonaviy vizual san'at va musiqani birlashtirishda davom etmoqda."
+    ],
+    "known": [
+      "Hakujitsu",
+      "SPECIALZ",
+      "Ichizu",
+      "Sakayume",
+      "Teenager Forever"
+    ]
+  },
+  "siinamota": {
+    "genre": "Vocaloid",
+    "origin": "Isikava, Yaponiya",
+    "since": "2009 — 2015",
+    "tagline": "Erta ketgan, ammo eng ko'p tinglangan Vocaloid qo'shig'ini qoldirgan prodyuser",
+    "bio": [
+      "Siinamota (avval \"Powapowa-P\" nomi bilan tanilgan, asl ismi Ryo Mizoguchi) 1995-yilda Isikava viloyatida tug'ilgan. U to'rt yoshidan musiqa o'rgana boshlagan; maktab guruhida tazyiqqa uchragach, yolg'iz o'zi musiqa yaratish mumkin bo'lgan Vocaloid olamiga kirib keldi va 2009-yildan Niconico saytiga qo'shiqlarini joylay boshladi.",
+      "U o'zining g'ayrioddiy ritmlari va aranjirovkalari bilan tez orada eng ta'sirli Vocaloid prodyuserlaridan biriga aylandi. Afsuski, Siinamota 2015-yil iyulida, atigi 20 yoshida hayotdan ko'z yumdi.",
+      "Uning 2013-yilda Kagamine Rin ovozi bilan yaratilgan \"Shoujo A\" (\"Young Girl A\") qo'shig'i esa vaqt o'tib, yangi hayot topdi: o'n yildan keyin u butun dunyoda eng ko'p tinglangan Vocaloid qo'shig'iga aylandi va YouTube'da eng ko'p ko'rilgan Vocaloid klipi bo'ldi. Bu — uning musiqasi hamon yashayotganining eng yorqin isboti."
+    ],
+    "known": [
+      "Shoujo A (Young Girl A)",
+      "Strobe Last"
+    ]
+  },
+  "sukima-switch": {
+    "genre": "J-Pop · Pop-rok",
+    "origin": "Aichi, Yaponiya",
+    "since": "2003-yildan",
+    "tagline": "\"Naruto Shippuden\" va \"Fullmetal Alchemist\"ning sevimli ovozlari",
+    "bio": [
+      "Sukima Switch — vokalist Takuya Ohashi va pianinochi-kompozitor Shintaro Tokita'dan iborat duet. Ular 2003-yilda debyut qilgan va o'shandan beri yorqin melodiyalari, Ohashi'ning kuchli, tiniq ovozi va Tokita'ning pianino partiyalari bilan Yaponiyada sevimli pop guruhlardan biri bo'lib kelmoqda.",
+      "\"Zenryoku Shounen\" va \"Kanade\" qo'shiqlari Yaponiyada deyarli har bir avlodga tanish — ayniqsa \"Kanade\" bitiruv va xayrlashuv mavsumining eng ko'p kuylanadigan qo'shiqlaridan biri. Anime muxlislari esa ularni \"Fullmetal Alchemist: Brotherhood\" openingi \"Golden Time Lover\" va \"Naruto Shippuden\" openingi \"LINE\" orqali yaxshi biladi.",
+      "Yigirma yildan ortiq vaqt davomida duet o'z uslubini yo'qotmay, iliq va samimiy pop musiqasi yaratishda davom etmoqda."
+    ],
+    "known": [
+      "Kanade",
+      "Zenryoku Shounen",
+      "Golden Time Lover",
+      "LINE",
+      "Boku no Kotoba de wa Nai Kore wa Bokutachi no Kotoba"
+    ]
+  },
+  "yoasobi": {
+    "genre": "J-Pop",
+    "origin": "Tokio, Yaponiya",
+    "since": "2019-yildan",
+    "tagline": "\"Romanni musiqaga aylantiradigan\" duet — \"Idol\" mualliflari",
+    "bio": [
+      "YOASOBI — prodyuser Ayase va vokalistka ikura (Lilas Ikuta) tomonidan 2019-yilda tuzilgan duet. Ularning g'oyasi noyob: har bir qo'shiq qisqa hikoya yoki romanga asoslanadi — Ayase matnni o'qib, uni musiqaga \"tarjima\" qiladi. Debyut qo'shig'i \"Yoru ni Kakeru\" (\"Tunga qarab yugurish\") internetda tarqalib, Yaponiyadagi eng katta xitlardan biriga aylandi.",
+      "2023-yilda \"Oshi no Ko\" animesi openingi \"Idol\" haqiqiy hodisaga aylandi: qo'shiq Billboard'ning AQShdan tashqari global chartida birinchi o'ringa chiqqan ilk yaponcha trek bo'ldi. \"Kaibutsu\" (\"Beastars\"), \"Yuusha\" (\"Frieren\") kabi anime qo'shiqlari ham butun dunyoga tanildi.",
+      "Ayase'ning tez, elektron pop uslubi va ikura'ning engil, toza ovozi YOASOBI'ni yangi avlod J-Popining eng tanilgan brendlaridan biriga aylantirdi."
+    ],
+    "known": [
+      "Idol",
+      "Yoru ni Kakeru",
+      "Kaibutsu",
+      "Yuusha",
+      "Gunjou",
+      "Tabun"
+    ]
+  },
+  "ano": {
+    "deezer": null,
+    "genre": "Alternativ pop · Rok",
+    "origin": "Tokio, Yaponiya",
+    "since": "2020-yildan (yakkaxon)",
+    "tagline": "Hech kimga o'xshamaydigan qo'shiqchi, aktrisa va moda ikonasi",
+    "bio": [
+      "ano (asl ismi Ayano Shimizu) — Yaponiyaning eng o'ziga xos estrada shaxslaridan biri. U 2013–2019-yillarda \"You'll Melt More!\" (\"Yurumerumo!\") aydol guruhida kuylagan, so'ng 2020-yilda \"Delete\" qo'shig'i bilan yakkaxon karyerasini boshladi. Qo'shiqchilikdan tashqari u model, aktrisa va televideniye boshlovchisi sifatida ham tanilgan.",
+      "Anime muxlislari uni \"Chainsaw Man\" serialining yakuniy qo'shiqlaridan biri \"Chu, Tayousei.\" orqali biladi — shirin, injiq va bir oz g'alati bu trek ano uslubining a'lo namunasi. 2022-yilda yirik leyblda \"AIDA\" bilan debyut qilib, keyin \"Nekonekototo\" (2023) va \"BONE BORN BOMB\" (2025) albomlarini chiqardi.",
+      "ano'ning musiqasi pank, alternativ rok va pop orasida erkin harakatlanadi: u odatiy \"yoqimtoy\" qolipdan qochib, o'ziga xos, ochiq va jasur obraz yaratgan. 2025-yilda u Nippon Budokan zalida ilk konsertini e'lon qildi."
+    ],
+    "known": [
+      "Chu, Tayousei.",
+      "AIDA",
+      "Delete",
+      "Kono Sekai ni Futari Dake"
+    ]
+  },
+  "mafumafu": {
+    "genre": "J-Pop · Rok · Utaite",
+    "origin": "Tokio, Yaponiya",
+    "since": "2010-yillardan",
+    "tagline": "Internetdagi \"utaite\" madaniyatining eng mashhur yuzlaridan biri",
+    "bio": [
+      "Mafumafu 1991-yilda Tokioda tug'ilgan. U internetda boshqalarning qo'shiqlarini kuylaydigan \"utaite\"lardan bo'lib boshlagan, keyinchalik o'zi ham qo'shiq yozuvchi, kompozitor va prodyuserga aylandi. Uning yumshoq, baland va bir zumda shiddatli qichqiriqqa o'ta oladigan ovozi millionlab muxlislarni orttirgan.",
+      "U 2016-yilda boshqa mashhur utaite Soraru bilan \"After the Rain\" duetini tuzdi — duet bugun ham arenalarda konsert beradi va 2026-yilda o'zining 10 yilligi sharafiga katta tur o'tkazmoqda. Mafumafu bir muddat salomatligi tufayli faoliyatini to'xtatib turgan, ammo keyin sahnaga qaytgan.",
+      "Uning eng mashhur ijrolaridan biri — Kanaria qalamiga mansub \"Inochi ni Kirawarete Iru\" (\"Hayot mendan nafratlanadi\") qo'shig'ining kaveri: og'riqli, ammo umid bag'ishlovchi bu ijro internetda yuz millionlab marta tinglangan."
+    ],
+    "known": [
+      "Inochi ni Kirawarete Iru (kaver)",
+      "After the Rain qo'shiqlari"
+    ]
+  },
+  "aina-the-end": {
+    "genre": "J-Pop · Rok",
+    "origin": "Osaka, Yaponiya",
+    "since": "2015-yildan",
+    "tagline": "BiSH guruhidan chiqqan, ovozi xirildoq va kuchli qo'shiqchi",
+    "bio": [
+      "AiNA THE END karyerasini 2015-yilda \"BiSH\" — o'zini \"pank aydol\" deb atagan g'ayrioddiy guruh a'zosi sifatida boshlagan. Uning xirildoq, hayajonli ovozi va sahnadagi jo'shqin raqslari guruhning eng taniqli belgilaridan biri edi. 2021-yilda u so'zi va kuyini to'liq o'zi yozgan \"THE END\" albomi bilan yakkaxon yo'lga chiqdi, BiSH esa 2023-yilda tarqaldi.",
+      "AiNA faqat qo'shiqchi emas: 2022-yilda u Brodvey myuzikli \"Janis\"ning yaponcha talqinida Janis Joplin rolini ijro etdi, 2023-yilda esa rejissyor Shunji Iwai'ning \"Kyrie no Uta\" filmida bosh rol o'ynab, film qo'shiqlarini ham yozdi va kuyladi.",
+      "Keyingi yillarda u \"Dandadan\" va \"Kusuriya no Hitorigoto\" (\"Dorishunosning pichirlashi\") animelari uchun openinglar kuylab, xalqaro tinglovchilarga ham keng tanildi."
+    ],
+    "known": []
+  },
+  "kira": {
+    "deezer": null
+  },
+  "giga": {
+    "deezer": null
+  },
+  "azari": {
+    "deezer": null
+  },
+  "memi": {
+    "deezer": null
+  },
+  "lilas": {
+    "deezer": null
+  },
+  "yuuyu": {
+    "deezer": null
+  }
+}
