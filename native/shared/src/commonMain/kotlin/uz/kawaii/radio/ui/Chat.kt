@@ -132,7 +132,14 @@ fun Chat(active: Boolean) {
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        PageHeader("Chat", if (connected) "$online onlayn · $live LIVE'da" else "Ulanmoqda…") {
+        val typing by chat.typing.collectAsState()
+        val sub = when {
+            !connected -> "Ulanmoqda…"
+            typing.size == 1 -> "${typing[0]} yozmoqda…"
+            typing.size > 1 -> "${typing.size} kishi yozmoqda…"
+            else -> "$online onlayn · $live LIVE'da"
+        }
+        PageHeader("Chat", sub) {
             // the mini player moves up here on this page: cover, song and artist in the corner
             AnimatedVisibility(
                 active,
@@ -155,6 +162,9 @@ fun Chat(active: Boolean) {
                         onReply = { replyTo = m },
                         onDelete = { chat.delete(m) },
                         onBan = { chat.ban(m.uid, true) },
+                        onReact = { e -> chat.react(m, e) },
+                        myUid = me.uid,
+                        mentionsMe = chat.mentionsMe(m),
                     )
                 }
                 if (messages.isEmpty() && connected) {
@@ -175,6 +185,21 @@ fun Chat(active: Boolean) {
         }
 
         // reply preview
+        // "@" suggestions: names seen in the chat that start with what was typed after "@"
+        val word = draft.substringAfterLast(' ').substringAfterLast('\n')
+        if (word.startsWith("@")) {
+            val q = word.drop(1).lowercase()
+            val names = remember(messages, q) { chat.mentionNames().filter { it.lowercase().startsWith(q) }.take(6) }
+            if (names.isNotEmpty()) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    for (n in names) Chip("@$n", false) { draft = draft.dropLast(word.length) + "@$n " }
+                }
+            }
+        }
+
         replyTo?.let { r ->
             Row(
                 Modifier.padding(horizontal = 16.dp).fillMaxWidth().tray(RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
@@ -207,7 +232,7 @@ fun Chat(active: Boolean) {
                 ) {
                     if (draft.isEmpty()) BasicText("XABAR YOZING…", style = T.pixel(15.sp, K.lcdInk.copy(alpha = 0.4f), lh = 18.sp))
                     BasicTextField(
-                        draft, { if (it.length <= 1000) draft = it },
+                        draft, { if (it.length <= 1000) { draft = it; if (it.isNotBlank()) chat.typing() } },
                         Modifier.fillMaxWidth(),
                         maxLines = 4,
                         textStyle = T.pixel(15.sp, K.lcdInk, lh = 18.sp).copy(shadow = lcdShadow()),
@@ -256,7 +281,11 @@ private fun RoundKey(glyph: List<String>, enabled: Boolean = true, active: Boole
 }
 
 @Composable
-private fun Bubble(m: ChatMsg, mine: Boolean, admin: Boolean, onReply: () -> Unit, onDelete: () -> Unit, onBan: () -> Unit) {
+private fun Bubble(
+    m: ChatMsg, mine: Boolean, admin: Boolean,
+    onReply: () -> Unit, onDelete: () -> Unit, onBan: () -> Unit,
+    onReact: (String) -> Unit, myUid: String, mentionsMe: Boolean,
+) {
     val store = LocalStore.current
     var menu by remember { mutableStateOf(false) }
     Row(
@@ -273,6 +302,7 @@ private fun Bubble(m: ChatMsg, mine: Boolean, admin: Boolean, onReply: () -> Uni
         Column(
             Modifier.widthIn(max = 270.dp)
                 .then(if (bare) Modifier else if (mine) Modifier.lcd(shape).border(2.dp, K.lcdBorder, shape) else Modifier.raised(shape))
+                .then(if (mentionsMe && !bare) Modifier.border(2.dp, K.gold, shape) else Modifier)
                 .pointerInput(m.id, m.nonce) { detectTapGestures(onLongPress = { if (!m.pending || mine) menu = true }) }
                 .padding(horizontal = if (bare) 0.dp else 12.dp, vertical = if (bare) 0.dp else 8.dp),
         ) {
@@ -310,7 +340,21 @@ private fun Bubble(m: ChatMsg, mine: Boolean, admin: Boolean, onReply: () -> Uni
                 Modifier.align(Alignment.End).padding(top = 2.dp),
                 style = T.pixel(10.sp, ink.copy(alpha = 0.5f)),
             )
-            if (menu) MessageMenu(m, mine, admin, onDismiss = { menu = false }, onReply = onReply, onDelete = onDelete, onBan = onBan)
+            if (m.reactions.isNotEmpty()) {
+                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (e in uz.kawaii.radio.chat.REACTIONS) {
+                        val who = m.reactions[e].orEmpty()
+                        if (who.isEmpty()) continue
+                        val minePick = myUid in who
+                        BasicText(
+                            "$e ${who.size}",
+                            Modifier.raised(RoundedCornerShape(10.dp), minePick).tap(onClick = { onReact(e) }).padding(horizontal = 7.dp, vertical = 3.dp),
+                            style = T.pixel(12.sp, if (minePick) K.ink else K.inkSoft),
+                        )
+                    }
+                }
+            }
+            if (menu) MessageMenu(m, mine, admin, onDismiss = { menu = false }, onReply = onReply, onDelete = onDelete, onBan = onBan, onReact = onReact)
         }
     }
 }
@@ -370,7 +414,10 @@ private class NextToBubble(private val mine: Boolean, private val gap: Int) : Po
 
 @Suppress("DEPRECATION")
 @Composable
-private fun MessageMenu(m: ChatMsg, mine: Boolean, admin: Boolean, onDismiss: () -> Unit, onReply: () -> Unit, onDelete: () -> Unit, onBan: () -> Unit) {
+private fun MessageMenu(
+    m: ChatMsg, mine: Boolean, admin: Boolean,
+    onDismiss: () -> Unit, onReply: () -> Unit, onDelete: () -> Unit, onBan: () -> Unit, onReact: (String) -> Unit,
+) {
     val sound = LocalSound.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 6.dp.roundToPx() }
@@ -382,6 +429,18 @@ private fun MessageMenu(m: ChatMsg, mine: Boolean, admin: Boolean, onDismiss: ()
                     Modifier.fillMaxWidth().height(42.dp).tap(onClick = { sound.press(); onDismiss(); action() }).padding(horizontal = 14.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) { BasicText(label, style = T.pixel(14.sp, color)) }
+            }
+            // quick reactions on top, like Telegram
+            if (!m.pending) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    for (e in uz.kawaii.radio.chat.REACTIONS) {
+                        Box(
+                            Modifier.size(40.dp).tap(onClick = { sound.press(); onDismiss(); onReact(e) }),
+                            contentAlignment = Alignment.Center,
+                        ) { BasicText(e, style = T.pixel(22.sp, K.ink)) }
+                    }
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 10.dp).raised(RoundedCornerShape(1.dp)))
             }
             if (!m.pending) item("↩  Javob berish", action = onReply)
             if (m.kind == "text") item("⧉  Nusxa olish") { clipboard.setText(androidx.compose.ui.text.AnnotatedString(m.body)) }

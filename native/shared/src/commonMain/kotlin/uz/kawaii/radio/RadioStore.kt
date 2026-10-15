@@ -331,6 +331,8 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
         refreshCatalog()
         if (live) scope.launch { tuneIn(play = false) }
         scope.launch { keepOnAir() }
+        // the chat connects at launch: unread badge, listener counter and typing need it
+        chat.start()
         scope.launch {
             audio.state.map { it.id }.distinctUntilChanged().drop(1).collect {
                 tuneJob?.cancel()

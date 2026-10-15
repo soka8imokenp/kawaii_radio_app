@@ -293,9 +293,10 @@ private fun Header(playing: Boolean) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // lit = on the broadcast, dark = off (pick your own songs)
+            // lit = on the broadcast, dark = off (pick your own songs); the number = people on LIVE right now
+            val listeners by store.chat.live.collectAsState()
             OnAirDot(live, 7)
-            BasicText("LIVE", style = T.pixel(12.sp, if (live) Color(0xFFFF8A95) else K.dimText2, lh = 12.sp))
+            BasicText(if (live && listeners > 0) "LIVE · $listeners" else "LIVE", style = T.pixel(12.sp, if (live) Color(0xFFFF8A95) else K.dimText2, lh = 12.sp))
         }
     }
 }

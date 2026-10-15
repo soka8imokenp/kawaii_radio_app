@@ -30,7 +30,10 @@ class KawaiiMessagingService : FirebaseMessagingService() {
         val chat = (application as KawaiiApp).store.chat
         // switched off in Profil, or the listener is reading the chat right now
         if (!chat.pushOn.value || chat.isReading) return
-        ChatNotifications.show(this, d["name"].orEmpty().ifEmpty { "Mehmon" }, d["text"].orEmpty(), d["ts"]?.toLongOrNull() ?: System.currentTimeMillis())
+        val name = d["name"].orEmpty().ifEmpty { "Mehmon" }
+        // called by "@name" or answered: say so, like a messenger does
+        val text = if (d["mention"] == "1") "@ sizni eslatdi: ${d["text"].orEmpty()}" else d["text"].orEmpty()
+        ChatNotifications.show(this, name, text, d["ts"]?.toLongOrNull() ?: System.currentTimeMillis())
     }
 }
 

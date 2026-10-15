@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -49,6 +52,8 @@ data class ChatMsg(
     val body: String,
     val reply: ChatReply? = null,
     val ts: Long,
+    /** emoji → ids of the people who reacted with it */
+    val reactions: Map<String, List<String>> = emptyMap(),
     /** Sent by this phone, not yet confirmed by the server. */
     val pending: Boolean = false,
     val nonce: String? = null,
@@ -96,6 +101,9 @@ data class UserCard(
 data class Me(val uid: String, val admin: Boolean = false, val banned: Boolean = false)
 
 private const val ID_KEY = "chat-id"
+private const val READ_KEY = "chat-read"
+/** The reactions offered on a long press, like Telegram's quick row. */
+val REACTIONS = listOf("❤️", "🔥", "😂", "😭")
 private const val PUSH_KEY = "chat-push"
 private const val PUSH_TOKEN_KEY = "chat-push-token"
 private const val HISTORY_PAGE = 60
@@ -148,6 +156,71 @@ class ChatStore(
 
     private var socket: ChatSocket? = null
     private var started = false
+
+    /* ---------- unread, typing, mentions ---------- */
+
+    private var lastRead: Long = p.kv.get(READ_KEY)?.toLongOrNull() ?: 0L
+    private val _unread = MutableStateFlow(0)
+    /** Messages from other people that arrived since the chat was last looked at (badge on the Chat key). */
+    val unread: StateFlow<Int> = _unread.asStateFlow()
+
+    private fun recountUnread() {
+        if (isReading) markRead()
+        else _unread.value = _messages.value.count { !it.pending && it.id > lastRead && it.uid != identity.uid }
+    }
+
+    private fun markRead() {
+        val last = _messages.value.lastOrNull { !it.pending }?.id ?: return
+        if (last > lastRead) { lastRead = last; p.kv.set(READ_KEY, last.toString()) }
+        _unread.value = 0
+    }
+
+    private val typingAt = HashMap<String, Pair<String, Long>>()
+    private val _typing = MutableStateFlow<List<String>>(emptyList())
+    /** Names of the people typing right now. */
+    val typing: StateFlow<List<String>> = _typing.asStateFlow()
+    private var typingJob: Job? = null
+    private var lastTypingSent = 0L
+
+    private fun onTyping(uid: String, name: String) {
+        if (uid == identity.uid) return
+        typingAt[uid] = name to uz.kawaii.radio.nowMs()
+        refreshTyping()
+        typingJob?.cancel()
+        typingJob = scope.launch { while (typingAt.isNotEmpty()) { delay(1_000); refreshTyping() } }
+    }
+
+    private fun refreshTyping() {
+        val now = uz.kawaii.radio.nowMs()
+        typingAt.entries.removeAll { now - it.value.second > 4_000 }
+        _typing.value = typingAt.values.map { it.first }
+    }
+
+    /** Call while the draft changes: tells the others "… yozmoqda" at most every 3 seconds. */
+    fun typing() {
+        val now = uz.kawaii.radio.nowMs()
+        if (now - lastTypingSent < 3_000) return
+        lastTypingSent = now
+        send(buildJsonObject { put("type", "typing") })
+    }
+
+    /** Names seen in the chat, for "@" suggestions (newest first, without this listener). */
+    fun mentionNames(): List<String> =
+        _messages.value.asReversed().filter { it.uid != identity.uid }.map { it.name }.distinct().take(20)
+
+    /** True when [m] calls this listener by "@name" or replies to them. */
+    fun mentionsMe(m: ChatMsg): Boolean {
+        if (m.uid == identity.uid) return false
+        if (m.reply != null && _messages.value.any { it.id == m.reply.id && it.uid == identity.uid }) return true
+        val me = displayName(profile.value).lowercase()
+        return me.length >= 2 && m.kind == "text" && m.body.lowercase().contains("@$me")
+    }
+
+    /** Toggles [emoji] on [m] (the same emoji again takes it back). */
+    fun react(m: ChatMsg, emoji: String) {
+        if (m.pending) return
+        send(buildJsonObject { put("type", "react"); put("id", m.id); put("emoji", emoji) })
+    }
     private var retry = 0
     private var reconnectJob: Job? = null
     private var loadingOlder = false
@@ -157,6 +230,7 @@ class ChatStore(
     fun start() {
         if (started) return
         started = true
+        scope.launch { _messages.collect { recountUnread() } }
         connect()
         scope.launch { loadStickers() }
         // tell the room when the name / avatar or the LIVE status changes
@@ -178,6 +252,7 @@ class ChatStore(
     fun onResume() {
         foreground = true
         sendViewing()
+        if (isReading) markRead()
         if (started && !_connected.value) { reconnectJob?.cancel(); retry = 0; connect() }
     }
 
@@ -195,6 +270,7 @@ class ChatStore(
     fun setPageVisible(visible: Boolean) {
         pageVisible = visible
         sendViewing()
+        if (isReading) markRead()
     }
 
     /** Read by the push service: drop the notification when the chat is already in front of the listener. */
@@ -268,6 +344,8 @@ class ChatStore(
                 _connected.value = true
                 o["you"]?.jsonObject?.let(::applyMe)
                 val history = msgs("history")
+                // first time in the chat: what was written before counts as read
+                if (lastRead == 0L) history.lastOrNull()?.let { lastRead = it.id; p.kv.set(READ_KEY, it.id.toString()) }
                 // keep messages still waiting to be sent after a reconnect
                 _messages.update { old -> history + old.filter { it.pending } }
                 _hasMore.value = history.size >= HISTORY_PAGE
@@ -278,6 +356,7 @@ class ChatStore(
             "msg" -> {
                 val m = o["m"]?.let { runCatching { json.decodeFromJsonElement(ChatMsg.serializer(), it) }.getOrNull() } ?: return
                 val nonce = o.str("nonce")
+                if (typingAt.remove(m.uid) != null) refreshTyping()
                 _messages.update { old ->
                     val rest = if (nonce != null) old.filterNot { it.nonce == nonce } else old
                     if (rest.any { it.id == m.id && !it.pending }) rest else rest + m
@@ -295,6 +374,12 @@ class ChatStore(
             }
             "presence" -> presence(o)
             "you" -> applyMe(o)
+            "reactions" -> {
+                val id = o["id"]?.jsonPrimitive?.longOrNull ?: return
+                val r = o["reactions"]?.let { runCatching { json.decodeFromJsonElement(ReactionsSerializer, it) }.getOrNull() } ?: emptyMap()
+                _messages.update { old -> old.map { if (it.id == id && !it.pending) it.copy(reactions = r) else it } }
+            }
+            "typing" -> onTyping(o.str("uid") ?: return, o.str("name") ?: "Mehmon")
             "user" -> _user.value = runCatching { json.decodeFromJsonElement(UserCard.serializer(), o) }.getOrNull()
             "error" -> o.str("text")?.let { _errors.tryEmit(it) }
         }
@@ -383,5 +468,7 @@ class ChatStore(
 }
 
 private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
+
+private val ReactionsSerializer = MapSerializer(String.serializer(), ListSerializer(String.serializer()))
 
 private fun hex(bytes: Int): String = Random.nextBytes(bytes).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }

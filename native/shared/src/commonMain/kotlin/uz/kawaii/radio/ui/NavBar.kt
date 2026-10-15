@@ -15,6 +15,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -41,6 +44,7 @@ private val ITEMS = listOf(Page.Home to "Asosiy", Page.Search to "Qidiruv", Page
 @Composable
 fun NavBar(page: Page, onPage: (Page) -> Unit) {
     val sound = LocalSound.current
+    val unread by LocalStore.current.chat.unread.collectAsState()
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = max(8.dp, bottom))) {
         Row(
@@ -63,7 +67,18 @@ fun NavBar(page: Page, onPage: (Page) -> Unit) {
                         when (key) {
                             Page.Home -> Px(Glyph.RADIO, 20.dp, K.ctlInk)
                             Page.Search -> Px(Glyph.SEARCH, 18.dp, K.ctlInk)
-                            Page.Chat -> Px(Glyph.CHAT, 18.dp, K.ctlInk)
+                            Page.Chat -> Box {
+                                Px(Glyph.CHAT, 18.dp, K.ctlInk)
+                                // unread messages: a small red LED with the count
+                                if (unread > 0 && page != Page.Chat) {
+                                    BasicText(
+                                        if (unread > 99) "99+" else unread.toString(),
+                                        Modifier.align(Alignment.TopEnd).offset(x = 12.dp, y = (-6).dp)
+                                            .background(K.onAir, RoundedCornerShape(8.dp)).padding(horizontal = 4.dp),
+                                        style = T.pixel(10.sp, androidx.compose.ui.graphics.Color.White, lh = 12.sp),
+                                    )
+                                }
+                            }
                             Page.Liked -> HeartIcon(false, K.ctlInk)
                             Page.Profile -> Px(Glyph.USER, 18.dp, K.ctlInk)
                         }

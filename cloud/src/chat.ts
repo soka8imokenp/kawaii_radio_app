@@ -14,6 +14,8 @@ import type { Env } from './index';
  *   admin    { code }                            turns this user into an admin (code = ADMIN_CODE secret)
  *   profile  { name, avatar, card }              card = public profile (favourite artist, stats, song on now)
  *   whois    { uid }                             asks for somebody's profile page
+ *   react    { id, emoji }                       toggles a reaction (❤️ 🔥 😂 😭), one per person per message
+ *   typing   {}                                  the listener is typing (sent every few seconds while typing)
  *   presence { live, viewing }                   listening to LIVE / looking at the chat right now (no push then)
  * HTTP POST /chat/push { uid, key, token, on }   the phone's FCM token for chat notifications
  * Server → client:
@@ -24,10 +26,14 @@ import type { Env } from './index';
  *   presence { online, live }
  *   you      { uid, admin, banned }
  *   user     { uid, name, avatar, admin, joined, seen, online, live, messages, card }
+ *   reactions { id, reactions }                  reactions = { emoji: [uid…] }
+ *   typing   { uid, name }
  *   error    { text }
  */
 
-interface Attachment { uid?: string; admin?: boolean; banned?: boolean; live?: boolean; viewing?: boolean; name?: string; avatar?: string; sent?: number[] }
+interface Attachment { uid?: string; admin?: boolean; banned?: boolean; live?: boolean; viewing?: boolean; name?: string; avatar?: string; sent?: number[]; typingAt?: number }
+
+const EMOJI = ['❤️', '🔥', '😂', '😭'];
 
 interface Msg {
   id: number;
@@ -38,6 +44,7 @@ interface Msg {
   body: string;
   reply?: { id: number; name: string; body: string; kind: string } | null;
   ts: number;
+  reactions?: Record<string, string[]>;
 }
 
 const HISTORY = 60;
@@ -82,6 +89,7 @@ export class ChatRoom extends DurableObject<Env> {
         uid TEXT PRIMARY KEY, keyhash TEXT, name TEXT, avatar TEXT,
         admin INTEGER DEFAULT 0, banned INTEGER DEFAULT 0, seen INTEGER);
       CREATE TABLE IF NOT EXISTS push (uid TEXT PRIMARY KEY, token TEXT, enabled INTEGER DEFAULT 1);
+      CREATE TABLE IF NOT EXISTS reactions (mid INTEGER, uid TEXT, emoji TEXT, PRIMARY KEY (mid, uid));
     `);
     // columns added later: ignore "duplicate column" on rooms that already have them
     for (const col of ['card TEXT', 'created INTEGER']) {
@@ -135,7 +143,46 @@ export class ChatRoom extends DurableObject<Env> {
     const rows = before
       ? this.sql.exec('SELECT * FROM messages WHERE deleted = 0 AND id < ? ORDER BY id DESC LIMIT ?', before, HISTORY).toArray()
       : this.sql.exec('SELECT * FROM messages WHERE deleted = 0 ORDER BY id DESC LIMIT ?', HISTORY).toArray();
-    return rows.map((r) => this.row(r)).reverse();
+    const msgs = rows.map((r) => this.row(r)).reverse();
+    if (msgs.length) {
+      const lo = msgs[0].id;
+      const hi = msgs[msgs.length - 1].id;
+      const byId = new Map(msgs.map((m) => [m.id, m]));
+      for (const r of this.sql.exec('SELECT mid, uid, emoji FROM reactions WHERE mid BETWEEN ? AND ?', lo, hi).toArray()) {
+        const m = byId.get(r.mid as number);
+        if (!m) continue;
+        m.reactions ??= {};
+        (m.reactions[r.emoji as string] ??= []).push(r.uid as string);
+      }
+    }
+    return msgs;
+  }
+
+  private reactionsOf(mid: number): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const r of this.sql.exec('SELECT uid, emoji FROM reactions WHERE mid = ?', mid).toArray()) (out[r.emoji as string] ??= []).push(r.uid as string);
+    return out;
+  }
+
+  /** Who is called by "@name" in the text (names are matched whole, case-insensitive), plus the author replied to. */
+  private mentioned(body: string, replyTo: number | null, self: string): Set<string> {
+    const out = new Set<string>();
+    const text = body.toLowerCase();
+    if (text.includes('@')) {
+      for (const u of this.sql.exec('SELECT uid, name FROM users').toArray()) {
+        const n = String(u.name ?? '').toLowerCase();
+        if (n.length < 2) continue;
+        const at = text.indexOf('@' + n);
+        const end = text.charAt(at + 1 + n.length);
+        if (at >= 0 && (end === '' || !/[\p{L}\p{N}]/u.test(end))) out.add(u.uid as string);
+      }
+    }
+    if (replyTo != null) {
+      const r = this.sql.exec('SELECT uid FROM messages WHERE id = ?', replyTo).toArray()[0];
+      if (r) out.add(r.uid as string);
+    }
+    out.delete(self);
+    return out;
   }
 
   /* ---------- socket events ---------- */
@@ -191,7 +238,27 @@ export class ChatRoom extends DurableObject<Env> {
         const msg: Msg = { id, uid: a.uid, name: a.name ?? 'Mehmon', avatar: a.avatar ?? 'p:0', kind, body, reply, ts: now };
         // the sender gets its nonce back to replace the pending bubble
         for (const other of this.ctx.getWebSockets()) this.send(other, { type: 'msg', m: msg, nonce: other === ws ? m.nonce : undefined });
-        this.ctx.waitUntil(this.notify(msg).catch(() => {}));
+        const called = kind === 'text' ? this.mentioned(body, reply?.id ?? null, a.uid) : this.mentioned('', reply?.id ?? null, a.uid);
+        this.ctx.waitUntil(this.notify(msg, called).catch(() => {}));
+        return;
+      }
+      case 'react': {
+        const id = typeof m.id === 'number' ? m.id : -1;
+        // an unknown emoji is ignored; no emoji at all removes the listener's reaction
+        if (m.emoji != null && !(typeof m.emoji === 'string' && EMOJI.includes(m.emoji))) return;
+        const emoji = typeof m.emoji === 'string' ? m.emoji : null;
+        if (id < 0 || a.banned) return;
+        if (!this.sql.exec('SELECT 1 FROM messages WHERE id = ? AND deleted = 0', id).toArray().length) return;
+        const had = this.sql.exec('SELECT emoji FROM reactions WHERE mid = ? AND uid = ?', id, a.uid).toArray()[0];
+        if (!emoji || had?.emoji === emoji) this.sql.exec('DELETE FROM reactions WHERE mid = ? AND uid = ?', id, a.uid);
+        else this.sql.exec('INSERT INTO reactions (mid, uid, emoji) VALUES (?, ?, ?) ON CONFLICT(mid, uid) DO UPDATE SET emoji = excluded.emoji', id, a.uid, emoji);
+        return this.broadcast({ type: 'reactions', id, reactions: this.reactionsOf(id) });
+      }
+      case 'typing': {
+        const now = Date.now();
+        if (a.banned || (a.typingAt && now - a.typingAt < 2_000)) return;
+        this.setAtt(ws, { ...a, typingAt: now });
+        for (const other of this.ctx.getWebSockets()) if (other !== ws) this.send(other, { type: 'typing', uid: a.uid, name: a.name });
         return;
       }
       case 'history': {
@@ -296,7 +363,7 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   /** Sends the new message to every phone that wants chat notifications, except its author and people looking at the chat. */
-  private async notify(msg: Msg) {
+  private async notify(msg: Msg, called: Set<string> = new Set()) {
     if (!this.env.FCM_SERVICE_ACCOUNT) { await this.ctx.storage.put('lastPush', { at: Date.now(), error: 'FCM_SERVICE_ACCOUNT secret is missing' }); return; }
     const sa = JSON.parse(this.env.FCM_SERVICE_ACCOUNT) as { client_email: string; private_key: string; project_id: string };
     const watching = new Set(this.ctx.getWebSockets().map((w) => this.att(w)).filter((x) => x.viewing && x.uid).map((x) => x.uid!));
@@ -314,10 +381,11 @@ export class ChatRoom extends DurableObject<Env> {
     // data-only: the app draws the notification itself (chat style, grouped, our logo)
     const data = { type: 'chat', mid: String(msg.id), name: msg.name, avatar: msg.avatar, kind: msg.kind, text: text.slice(0, 300), ts: String(msg.ts) };
     await Promise.all(targets.map(async (t) => {
+      const mention = called.has(t.uid as string) ? '1' : '0';
       const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: { token: t.token, data, android: { priority: 'HIGH', ttl: '86400s' } } }),
+        body: JSON.stringify({ message: { token: t.token, data: { ...data, mention }, android: { priority: 'HIGH', ttl: '86400s' } } }),
       });
       results.push(res.ok ? 'ok' : `${res.status} ${(await res.text()).slice(0, 200)}`);
       // phone uninstalled the app or the token expired: forget it
