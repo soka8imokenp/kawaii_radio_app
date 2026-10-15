@@ -151,11 +151,33 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     /** Fires when the listener tried something that needs Kawaii Pass (picking a song in the live broadcast…). */
     val passNeeded: SharedFlow<Unit> = _passNeeded.asSharedFlow()
 
-    /** Live: blocks the action and asks for Kawaii Pass; returns true when it was blocked. */
-    private fun blockedInLive(): Boolean {
+    private val _leaveLiveAsk = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    /** Fires when a Kawaii Pass holder tried to pick, skip or seek while on the broadcast. */
+    val leaveLiveAsk: SharedFlow<Unit> = _leaveLiveAsk.asSharedFlow()
+    private var pendingAction: (() -> Unit)? = null
+
+    /**
+     * Live: blocks the action. Without Kawaii Pass it asks to subscribe; with it, it asks whether to
+     * leave the broadcast and keeps [retry] to run once the listener agrees. Returns true when blocked.
+     */
+    private fun blockedInLive(retry: () -> Unit): Boolean {
         if (!live) return false
-        _passNeeded.tryEmit(Unit)
+        if (premium) {
+            pendingAction = retry
+            _leaveLiveAsk.tryEmit(Unit)
+        } else {
+            _passNeeded.tryEmit(Unit)
+        }
         return true
+    }
+
+    /** Answer to "leave the broadcast?": on yes, LIVE goes off and the blocked action runs. */
+    fun answerLeaveLive(leave: Boolean) {
+        val action = pendingAction
+        pendingAction = null
+        if (!leave) return
+        setMode(Mode.PICK)
+        action?.invoke()
     }
 
     fun setMode(m: Mode) {
@@ -343,8 +365,9 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
      * streaming app does. When that queue is already loaded it simply jumps, without a gap.
      */
     fun play(id: String, context: List<String> = engine.value.queue, shuffle: Boolean = false) {
-        if (blockedInLive()) return
-        val ctx = context.ifEmpty { _tracks.value.map { it.id } }
+        if (blockedInLive { play(id, context, shuffle) }) return
+        // a context without the song (e.g. the broadcast queue just left) falls back to the whole catalogue
+        val ctx = context.ifEmpty { _tracks.value.map { it.id } }.let { c -> if (id in c) c else _tracks.value.map { it.id } }
         val q = engine.value.queue
         audio.setShuffle(shuffle)
         if (q == ctx) {
@@ -361,14 +384,14 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
 
     /** "Barchasini tinglash" / "Aralashtirish": the whole list from the start, or shuffled. */
     fun playAll(ids: List<String>, shuffle: Boolean) {
-        if (blockedInLive()) return
+        if (blockedInLive { playAll(ids, shuffle) }) return
         if (ids.isEmpty()) return
         play(if (shuffle) ids.random() else ids.first(), ids, shuffle)
     }
 
     /** Puts the song right after the current one. */
     fun playNext(id: String) {
-        if (blockedInLive()) return
+        if (blockedInLive { playNext(id) }) return
         val t = track(id) ?: return
         audio.insertNext(queueItem(t))
     }
@@ -381,8 +404,8 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
             else -> audio.play()
         }
     }
-    fun next() { if (!blockedInLive()) audio.next() }
-    fun seek(seconds: Double) { if (!blockedInLive()) audio.seekTo((seconds.coerceAtLeast(0.0) * 1000).toLong()) }
+    fun next() { if (!blockedInLive { next() }) audio.next() }
+    fun seek(seconds: Double) { if (!blockedInLive { seek(seconds) }) audio.seekTo((seconds.coerceAtLeast(0.0) * 1000).toLong()) }
 
     fun toggleLike(id: String) {
         val m = LinkedHashMap(_likes.value)

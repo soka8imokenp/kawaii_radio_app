@@ -372,3 +372,28 @@ fun ArtistSheet(open: Boolean, onClose: () -> Unit) {
         }
     }
 }
+
+/** Kawaii Pass holder tried to pick, skip or seek while on the broadcast: leave it? */
+@Composable
+fun LeaveLiveSheet(open: Boolean, onAnswer: (leave: Boolean) -> Unit) {
+    Sheet(open, { onAnswer(false) }, "LIVE efir") {
+        Column(
+            Modifier.fillMaxWidth().lcd(RoundedCornerShape(18.dp)).border(3.dp, K.lcdBorder, RoundedCornerShape(18.dp)).padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            BasicText("● LIVE", style = T.pixel(22.sp, K.lcdInk, lh = 22.sp).copy(shadow = lcdShadow()))
+            BasicText(
+                "Siz jonli efirdasiz. Efirdan chiqasizmi?", Modifier.padding(top = 8.dp),
+                style = T.pixel(14.sp, K.lcdInk.copy(alpha = 0.8f)).copy(textAlign = TextAlign.Center),
+            )
+            BasicText(
+                "Chiqsangiz, qo'shiqlarni o'zingiz tanlaysiz. Efirga LIVE tugmasi bilan qaytasiz.", Modifier.padding(top = 6.dp),
+                style = T.pixel(12.sp, K.lcdInk.copy(alpha = 0.6f), lh = 16.sp).copy(textAlign = TextAlign.Center),
+            )
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PixelKey("Efirda qolish", Modifier.weight(1f), height = 48.dp) { onAnswer(false) }
+            PixelKey("Chiqish", Modifier.weight(1f), height = 48.dp) { onAnswer(true) }
+        }
+    }
+}

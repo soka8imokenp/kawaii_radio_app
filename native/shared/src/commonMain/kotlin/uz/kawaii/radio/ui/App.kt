@@ -51,6 +51,7 @@ import uz.kawaii.radio.ui.sheets.ArtistSheet
 import uz.kawaii.radio.ui.sheets.AvatarSheet
 import uz.kawaii.radio.ui.sheets.InfoSheet
 import uz.kawaii.radio.ui.sheets.LibrarySheet
+import uz.kawaii.radio.ui.sheets.LeaveLiveSheet
 import uz.kawaii.radio.ui.sheets.PremiumSheet
 import uz.kawaii.radio.ui.sheets.SongSheet
 import uz.kawaii.radio.ui.sheets.UpdateSheet
@@ -74,6 +75,8 @@ class UiState {
     /** Song whose card (dates, plays, actions) is open. */
     var song by mutableStateOf<String?>(null)
     var premium by mutableStateOf(false)
+    /** "You are on the live broadcast, leave it?" (Kawaii Pass holders only). */
+    var leaveLive by mutableStateOf(false)
     var avatarPicker by mutableStateOf(false)
     var artistPicker by mutableStateOf(false)
     var wrapped by mutableStateOf(false)
@@ -89,6 +92,7 @@ class UiState {
         if (info != null) { info = null; return true }
         if (song != null) { song = null; return true }
         if (premium) { premium = false; return true }
+        if (leaveLive) { leaveLive = false; return true }
         if (avatarPicker) { avatarPicker = false; return true }
         if (artistPicker) { artistPicker = false; return true }
         if (wrapped) { wrapped = false; return true }
@@ -120,6 +124,7 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
 
         // something that needs Kawaii Pass was tried (e.g. picking a song in the live broadcast)
         LaunchedEffect(Unit) { store.passNeeded.collect { ui.premium = true } }
+        LaunchedEffect(Unit) { store.leaveLiveAsk.collect { ui.leaveLive = true } }
 
         // on every launch: ask GitHub Releases whether a newer build exists ("Keyinroq" hides that build until the next one)
         LaunchedEffect(booted) {
@@ -157,6 +162,7 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
             SongSheet(id = ui.song, onClose = { ui.song = null })
             InfoSheet(id = ui.info, onClose = { ui.info = null })
             PremiumSheet(open = ui.premium, onClose = { ui.premium = false })
+            LeaveLiveSheet(open = ui.leaveLive, onAnswer = { leave -> ui.leaveLive = false; store.answerLeaveLive(leave) })
             AvatarSheet(open = ui.avatarPicker, onClose = { ui.avatarPicker = false })
             ArtistSheet(open = ui.artistPicker, onClose = { ui.artistPicker = false })
             WrappedSheet(open = ui.wrapped, onClose = { ui.wrapped = false })
