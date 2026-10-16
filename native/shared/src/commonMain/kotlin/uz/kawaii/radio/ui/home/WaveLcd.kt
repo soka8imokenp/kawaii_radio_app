@@ -174,15 +174,21 @@ fun WaveLcd(t: Track, playing: Boolean, durationMs: Long, clock: State<Double>) 
 
             Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(1.dp).drawBehind { drawRect(inkRule) })
             BoxWithConstraints(Modifier.padding(top = 6.dp).fillMaxWidth()) {
-                val narrow = maxWidth < 330.dp
+                val narrow = maxWidth < 365.dp
+                val shown = song.effectiveLang(lang)
+                val avail = song.availableLangs
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    // lyric language: always on the panel, lit only when the song has that transcript
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // lyric language: UZ, ROM, JP — lit when available and active
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         for (l in Lang.entries) {
-                            val available = if (l == Lang.UZ) !song.uzbek.isNullOrBlank() else song.original != null
-                            val shown = if (song.original != null && (lang == Lang.JP || song.uzbek.isNullOrBlank())) Lang.JP else Lang.UZ
+                            val available = l in avail
                             val on = available && shown == l
-                            val label = (if (l == Lang.UZ) "UZ" else "JP") + if (on) " ●" else " ○"
+                            val code = when (l) {
+                                Lang.UZ -> "UZ"
+                                Lang.ROM -> "ROM"
+                                Lang.JP -> "JP"
+                            }
+                            val label = "$code ${if (on) "●" else "○"}"
                             val style = when {
                                 on -> T.pixel(15.sp, K.lcdInk, lh = 15.sp).copy(shadow = ls)
                                 available -> T.pixel(15.sp, K.lcdInk.copy(alpha = 0.45f), lh = 15.sp)

@@ -41,7 +41,7 @@ import uz.kawaii.radio.data.parseCloud
 import uz.kawaii.radio.data.rememberCloud
 import kotlin.time.Clock
 
-enum class Lang { UZ, JP }
+enum class Lang { UZ, ROM, JP }
 /** LIVE: the shared broadcast, the same song and second for everyone. PICK: any song, any order (Kawaii Pass). */
 enum class Mode { LIVE, PICK }
 
@@ -130,7 +130,13 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     private val _saved = MutableStateFlow(saved0.saved)
     val saved: StateFlow<List<String>> = _saved.asStateFlow()
 
-    private val _lang = MutableStateFlow(if (saved0.lang == "jp") Lang.JP else Lang.UZ)
+    private val _lang = MutableStateFlow(
+        when (saved0.lang) {
+            "jp" -> Lang.JP
+            "rom" -> Lang.ROM
+            else -> Lang.UZ
+        }
+    )
     val lang: StateFlow<Lang> = _lang.asStateFlow()
 
     private val _theme = MutableStateFlow(ThemeMode.entries.firstOrNull { it.name.equals(saved0.theme, true) } ?: ThemeMode.AUTO)
@@ -272,21 +278,28 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
         if (play) audio.play()
     }
 
-    /** Keeps a playing phone on the broadcast: corrects drift and skipped songs every few seconds. */
+    /** Keeps a playing phone on the broadcast: corrects drift and skipped songs without interrupting buffering. */
     private suspend fun keepOnAir() {
+        var lastSyncMs = 0L
         while (scope.isActive) {
             delay(5_000)
             val e = engine.value
-            if (!live || !e.playing || schedule.isEmpty()) continue
+            if (!live || !e.playing || e.buffering || schedule.isEmpty()) continue
             val now = liveNow()
             val slot = slotAt(now) ?: continue
             if (e.id == slot.id) {
                 val expected = now - slot.start
-                if (kotlin.math.abs(audio.positionMs() - expected) > 3_000) audio.seekTo(expected)
+                if (now - lastSyncMs > 30_000 && kotlin.math.abs(audio.positionMs() - expected) > 12_000) {
+                    lastSyncMs = now
+                    audio.seekTo(expected)
+                }
             } else {
                 // right at a song change the two may differ for a moment; only act on a real mismatch
-                val near = slotAt(now - 4_000)?.id == e.id || slotAt(now + 4_000)?.id == e.id
-                if (!near) tuneIn(play = true)
+                val near = slotAt(now - 8_000)?.id == e.id || slotAt(now + 8_000)?.id == e.id
+                if (!near && now - lastSyncMs > 15_000) {
+                    lastSyncMs = now
+                    tuneIn(play = true)
+                }
             }
         }
     }
@@ -598,7 +611,7 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
             id = engine.value.id,
             likes = _likes.value,
             saved = _saved.value,
-            lang = if (_lang.value == Lang.JP) "jp" else "uz",
+            lang = _lang.value.name.lowercase(),
             theme = _theme.value.name.lowercase(),
             crossfade = _crossfade.value,
             queue = engine.value.queue,

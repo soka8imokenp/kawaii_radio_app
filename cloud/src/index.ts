@@ -38,7 +38,7 @@ interface Track {
   duration: number;
   bpm: number;
   energy: number;
-  lyrics: { uzbek: string; romaji?: string } | null;
+  lyrics: { uzbek: string; romaji?: string; kanji?: string } | null;
   info?: { description: string; details: { title: string; text: string }[] };
   addedAt?: string;
 }
@@ -125,10 +125,15 @@ async function route(req: Request, env: Env): Promise<Response> {
       await env.BUCKET.put(`stickers/${name}`, body, { httpMetadata: { contentType: req.headers.get('Content-Type') ?? 'application/octet-stream' } });
       return json({ ok: true, url: `/files/stickers/${name}` });
     }
+    if (seg[1] === 'radio' && seg[2] === 'reset' && m === 'POST') {
+      await env.BUCKET.delete(RADIO_KEY);
+      return json({ ok: true, radio: await radio(env) });
+    }
     if (seg[1] !== 'tracks') throw new HttpError(404, 'unknown endpoint');
     const id = seg[2];
     if (!id && m === 'POST') return addTrack(req, env);
     if (id && seg[3] === 'cover' && (m === 'PUT' || m === 'POST')) return replaceCover(req, env, id);
+    if (id && seg[3] === 'audio' && (m === 'PUT' || m === 'POST')) return replaceAudio(req, env, id);
     if (id && !seg[3] && m === 'PATCH') return patchTrack(req, env, id);
     if (id && !seg[3] && m === 'DELETE') return deleteTrack(env, id);
     if (id && !seg[3] && m === 'GET') {
@@ -279,12 +284,13 @@ function cleanMeta(raw: Record<string, unknown>): Meta {
     }
   }
   if ('lyrics' in raw) {
-    const l = raw.lyrics as { uzbek?: unknown; romaji?: unknown } | null;
+    const l = raw.lyrics as { uzbek?: unknown; romaji?: unknown; kanji?: unknown } | null;
     if (l === null) out.lyrics = null;
     else if (typeof l === 'object' && typeof l.uzbek === 'string') {
       out.lyrics = { uzbek: l.uzbek };
       if (typeof l.romaji === 'string' && l.romaji.trim()) out.lyrics.romaji = l.romaji;
-    } else throw new HttpError(400, 'lyrics must be null or { "uzbek": "...", "romaji"?: "..." }');
+      if (typeof l.kanji === 'string' && l.kanji.trim()) out.lyrics.kanji = l.kanji;
+    } else throw new HttpError(400, 'lyrics must be null or { "uzbek": "...", "romaji"?: "...", "kanji"?: "..." }');
   }
   if ('info' in raw) {
     const i = raw.info as { description?: unknown; details?: unknown } | null;
@@ -414,6 +420,29 @@ async function replaceCover(req: Request, env: Env, id: string): Promise<Respons
     updated = t;
   });
   if (old.startsWith('/files/covers/') && old !== DEFAULT_COVER) await env.BUCKET.delete(old.slice('/files/'.length));
+  return json({ ok: true, track: updated });
+}
+
+async function replaceAudio(req: Request, env: Env, id: string): Promise<Response> {
+  const input = await readInput(req);
+  if (!input.audio) throw new HttpError(400, 'audio is required (multipart file "audio" or "audio_url")');
+  checkSize(input.audio, MAX_AUDIO, 'audio');
+  const meta = cleanMeta(input.meta);
+  const exists = (await readPlaylist(env)).data.tracks.some((t) => t.id === id);
+  if (!exists) throw new HttpError(404, `track ${id} not found`);
+  const key = `audio/${id}-${Date.now().toString(36)}.${input.audio.ext}`;
+  await env.BUCKET.put(key, input.audio.data, { httpMetadata: { contentType: input.audio.type } });
+  let old = '';
+  let updated: Track | undefined;
+  await updatePlaylist(env, (p) => {
+    const t = p.tracks.find((x) => x.id === id);
+    if (!t) throw new HttpError(404, `track ${id} not found`);
+    old = t.audioSrc;
+    t.audioSrc = `/files/${key}`;
+    if (meta.duration !== undefined) t.duration = meta.duration;
+    updated = t;
+  });
+  if (old.startsWith('/files/audio/')) await env.BUCKET.delete(old.slice('/files/'.length));
   return json({ ok: true, track: updated });
 }
 

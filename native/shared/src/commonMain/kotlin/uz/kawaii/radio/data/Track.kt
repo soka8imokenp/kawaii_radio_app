@@ -21,7 +21,7 @@ data class Track(
 }
 
 @Serializable
-data class Lyrics(val uzbek: String, val romaji: String? = null)
+data class Lyrics(val uzbek: String = "", val romaji: String? = null, val kanji: String? = null)
 
 @Serializable
 data class TrackInfo(val description: String, val details: List<Detail> = emptyList())

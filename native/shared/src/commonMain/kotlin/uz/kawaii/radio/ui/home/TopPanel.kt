@@ -105,7 +105,9 @@ import uz.kawaii.radio.Lang
 import uz.kawaii.radio.Mode
 import uz.kawaii.radio.data.LyricLine
 import uz.kawaii.radio.data.Track
+import uz.kawaii.radio.data.hasKanjiLrc
 import uz.kawaii.radio.data.lineAt
+import uz.kawaii.radio.data.parseKanjiLrc
 import uz.kawaii.radio.data.parseLrc
 import uz.kawaii.radio.data.AutoLyrics
 import uz.kawaii.radio.ui.LocalStore
@@ -127,29 +129,68 @@ import kotlin.math.abs
 private val TABS = listOf(Tab.JPOP to "J-Pop", Tab.OST to "Anime OST", Tab.SAVED to "Saqlangan")
 private const val NO_LYRICS = "Bu qo'shiq uchun matn hali yo'q"
 
-/** Lyrics of a song: its own (Uzbek translation / romaji), or synced ones found automatically. */
-class SongLyrics(val uzbek: String?, val original: String?, val auto: Boolean, val note: String) {
-    fun source(lang: Lang): String = when {
-        lang == Lang.JP && original != null -> original
-        !uzbek.isNullOrBlank() -> uzbek
-        else -> original ?: ""
+/** Lyrics of a song: 3 variants — Uzbek translation (UZ), Romaji (ROM), and Japanese Kanji/Kana (JP). */
+class SongLyrics(
+    val uzbek: String?,
+    val romaji: String?,
+    val kanji: String?,
+    val auto: Boolean,
+    val note: String,
+) {
+    val hasUz: Boolean get() = !uzbek.isNullOrBlank()
+    val hasRom: Boolean get() = !romaji.isNullOrBlank() && parseLrc(romaji).isNotEmpty()
+    val hasJp: Boolean get() = !kanji.isNullOrBlank() || hasKanjiLrc(romaji)
+
+    val availableLangs: List<Lang> get() = buildList {
+        if (hasUz) add(Lang.UZ)
+        if (hasRom) add(Lang.ROM)
+        if (hasJp) add(Lang.JP)
     }
-    val hasBoth get() = !uzbek.isNullOrBlank() && original != null
+
+    fun effectiveLang(lang: Lang): Lang = when {
+        lang == Lang.UZ && hasUz -> Lang.UZ
+        lang == Lang.JP && hasJp -> Lang.JP
+        lang == Lang.ROM && hasRom -> Lang.ROM
+        hasRom -> Lang.ROM
+        hasUz -> Lang.UZ
+        hasJp -> Lang.JP
+        else -> Lang.ROM
+    }
+
+    fun nextLang(lang: Lang): Lang {
+        val avail = availableLangs
+        if (avail.size <= 1) return effectiveLang(lang)
+        val cur = effectiveLang(lang)
+        val idx = avail.indexOf(cur)
+        return avail[(idx + 1) % avail.size]
+    }
+
+    fun linesFor(lang: Lang): List<LyricLine> = when (effectiveLang(lang)) {
+        Lang.UZ -> if (!uzbek.isNullOrBlank()) parseLrc(uzbek) else emptyList()
+        Lang.ROM -> if (!romaji.isNullOrBlank()) parseLrc(romaji) else emptyList()
+        Lang.JP -> when {
+            !kanji.isNullOrBlank() -> parseKanjiLrc(kanji)
+            !romaji.isNullOrBlank() -> parseKanjiLrc(romaji)
+            else -> emptyList()
+        }
+    }
 }
 
 @Composable
 fun rememberSongLyrics(t: Track): SongLyrics {
     val store = LocalStore.current
     val own = t.lyrics
-    if (own != null) return remember(t.id, own) { SongLyrics(own.uzbek, own.romaji, false, NO_LYRICS) }
+    if (own != null && (!own.uzbek.isBlank() || !own.romaji.isNullOrBlank() || !own.kanji.isNullOrBlank())) {
+        return remember(t.id, own) { SongLyrics(own.uzbek, own.romaji, own.kanji, false, NO_LYRICS) }
+    }
     val found by produceState<AutoLyrics?>(null, t.id) { value = store.autoLyrics(t) ?: AutoLyrics(at = -1) }
     val f = found
     return remember(t.id, f) {
         when {
-            f == null -> SongLyrics(null, null, true, "Matn qidirilmoqda…")
-            f.synced != null -> SongLyrics(null, f.synced, true, NO_LYRICS)
-            f.instrumental -> SongLyrics(null, null, true, "♪ So'zsiz musiqa")
-            else -> SongLyrics(null, null, true, NO_LYRICS)
+            f == null -> SongLyrics(null, null, null, true, "Matn qidirilmoqda…")
+            f.synced != null -> SongLyrics(null, f.synced, null, true, NO_LYRICS)
+            f.instrumental -> SongLyrics(null, null, null, true, "♪ So'zsiz musiqa")
+            else -> SongLyrics(null, null, null, true, NO_LYRICS)
         }
     }
 }
@@ -173,7 +214,11 @@ fun TopPanel(
     val engine by store.engine.collectAsState()
     val saved by store.saved.collectAsState()
     val pass by store.pass.collectAsState()
-    val list = remember(tab, tracks, saved) { tabList(tab, tracks, saved) }
+    val rawList = remember(tab, tracks, saved) { tabList(tab, tracks, saved) }
+    val list = remember(rawList, track, tab) {
+        if (tab == Tab.SAVED || rawList.isEmpty() || rawList.any { it.t.id == track.id }) rawList
+        else listOf(Entry(track, -1)) + rawList
+    }
 
     Box(
         modifier.fillMaxWidth()
@@ -532,9 +577,9 @@ private fun NowCard(t: Track, playing: Boolean, drawer: Drawer, clock: State<Dou
     val sound = LocalSound.current
     val lang by store.lang.collectAsState()
     val song = rememberSongLyrics(t)
-    val src = song.source(lang)
-    val lines = remember(src) { if (src.isEmpty()) emptyList() else parseLrc(src) }
-    val canJp = song.hasBoth
+    val shownLang = song.effectiveLang(lang)
+    val lines = remember(song, shownLang) { song.linesFor(shownLang) }
+    val canSwitch = song.availableLangs.size > 1
     Column(
         Modifier.fillMaxWidth().zIndex(2f)
             .darkWell(RoundedCornerShape(16.dp), color = K.card)
@@ -551,12 +596,11 @@ private fun NowCard(t: Track, playing: Boolean, drawer: Drawer, clock: State<Dou
                 BasicText(
                     when {
                         song.auto -> "ORIGINAL"
-                        lang == Lang.JP && canJp -> "日本 ⇄"
-                        canJp -> "O'ZB ⇄"
-                        song.uzbek.isNullOrBlank() -> "日本"
-                        else -> "O'ZB"
+                        shownLang == Lang.UZ -> if (canSwitch) "O'ZB ⇄" else "O'ZB"
+                        shownLang == Lang.ROM -> if (canSwitch) "ROM ⇄" else "ROM"
+                        else -> if (canSwitch) "日本 ⇄" else "日本"
                     },
-                    Modifier.tap(enabled = canJp, onClick = { sound.press(); store.setLang(if (lang == Lang.JP) Lang.UZ else Lang.JP) })
+                    Modifier.tap(enabled = canSwitch, onClick = { sound.press(); store.setLang(song.nextLang(lang)) })
                         .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                     style = T.dot(11.sp, K.dimText2),
                 )
@@ -577,7 +621,7 @@ private fun NowCard(t: Track, playing: Boolean, drawer: Drawer, clock: State<Dou
                 drawer.open,
                 transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) },
             ) { open ->
-                if (open) FullLyrics(lines, clock, song.note) else Box(Modifier.fillMaxWidth().height(70.dp)) { LyricLines(lines, clock, lang, song.note) }
+                if (open) FullLyrics(lines, clock, song.note) else Box(Modifier.fillMaxWidth().height(70.dp)) { LyricLines(lines, clock, shownLang, song.note) }
             }
         }
     }

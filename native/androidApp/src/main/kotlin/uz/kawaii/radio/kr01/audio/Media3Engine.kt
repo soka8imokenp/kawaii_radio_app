@@ -52,11 +52,13 @@ class Media3Engine(context: Context) : AudioEngine {
         val c = controller ?: return
         val ids = List(c.mediaItemCount) { c.getMediaItemAt(it).mediaId }
         if (ids != queueIds) queueIds = ids
-        val playing = c.playWhenReady && (c.playbackState == Player.STATE_READY || c.playbackState == Player.STATE_BUFFERING)
+        val buffering = c.playbackState == Player.STATE_BUFFERING
+        val playing = c.playWhenReady && (c.playbackState == Player.STATE_READY || buffering)
         _state.value = EngineState(
             id = c.currentMediaItem?.mediaId,
             queue = queueIds,
             playing = playing,
+            buffering = buffering,
             durationMs = c.duration.takeIf { it > 0 } ?: 0,
         )
     }

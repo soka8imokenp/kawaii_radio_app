@@ -103,6 +103,7 @@ data class EngineState(
     /** Ids in the play queue, in order. */
     val queue: List<String> = emptyList(),
     val playing: Boolean = false,
+    val buffering: Boolean = false,
     val durationMs: Long = 0,
 )
 

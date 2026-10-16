@@ -120,6 +120,11 @@ fun Home(ui: UiState) {
     val clock = rememberClock(store.platform.audio, engine.playing)
 
     var tab by remember { mutableStateOf(if (t.isOst) Tab.OST else Tab.JPOP) }
+    LaunchedEffect(t.id) {
+        if (store.live && tab != Tab.SAVED) {
+            tab = if (t.isOst) Tab.OST else Tab.JPOP
+        }
+    }
     val isLiked = t.id in liked
     val isSaved = t.id in saved
     // the tuner walks the current band; an empty Saved band falls back to J-Pop/OST
