@@ -1,5 +1,8 @@
 package uz.kawaii.radio.ui.home
 
+import androidx.compose.foundation.border
+import uz.kawaii.radio.ui.kit.raised
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -27,6 +30,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -104,6 +108,7 @@ import kotlinx.coroutines.launch
 import uz.kawaii.radio.Lang
 import uz.kawaii.radio.Mode
 import uz.kawaii.radio.data.LyricLine
+import uz.kawaii.radio.data.Station
 import uz.kawaii.radio.data.Track
 import uz.kawaii.radio.data.hasKanjiLrc
 import uz.kawaii.radio.data.lineAt
@@ -126,7 +131,6 @@ import uz.kawaii.radio.ui.theme.lyricGlow
 import uz.kawaii.radio.ui.theme.motionSpring
 import kotlin.math.abs
 
-private val TABS = listOf(Tab.JPOP to "J-Pop", Tab.OST to "Anime OST", Tab.SAVED to "Saqlangan")
 private const val NO_LYRICS = "Bu qo'shiq uchun matn hali yo'q"
 
 /** Lyrics of a song: 3 variants — Uzbek translation (UZ), Romaji (ROM), and Japanese Kanji/Kana (JP). */
@@ -200,9 +204,7 @@ private val PanelShape = RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.
 fun TopPanel(
     track: Track,
     tracks: List<Track>,
-    tab: Tab,
-    onTab: (Tab) -> Unit,
-    onPremium: () -> Unit,
+    station: Station,
     drawer: Drawer,
     clock: State<Double>,
     onToggle: () -> Unit,
@@ -212,11 +214,10 @@ fun TopPanel(
 ) {
     val store = LocalStore.current
     val engine by store.engine.collectAsState()
-    val saved by store.saved.collectAsState()
-    val pass by store.pass.collectAsState()
-    val rawList = remember(tab, tracks, saved) { tabList(tab, tracks, saved) }
-    val list = remember(rawList, track, tab) {
-        if (tab == Tab.SAVED || rawList.isEmpty() || rawList.any { it.t.id == track.id }) rawList
+    val rawList = remember(station, tracks) { stationList(station, tracks) }
+    // the song that plays stays in the flow while the dial moves to another station
+    val list = remember(rawList, track) {
+        if (rawList.isEmpty() || rawList.any { it.t.id == track.id }) rawList
         else listOf(Entry(track, -1)) + rawList
     }
 
@@ -231,11 +232,13 @@ fun TopPanel(
         Box(Modifier.matchParentSize().dotScreen(0.05f))
 
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
-            Header(engine.playing)
+            Header(station)
             Spacer(Modifier.height(8.dp))
-            Segmented(tab, onTab)
+            ModeSlider()
+            Spacer(Modifier.height(6.dp))
+            Stations(station)
             Spacer(Modifier.height(10.dp))
-            if (list.isNotEmpty()) Covers(list, track.id, engine.playing, coverScale) else EmptySaved(pass, onPremium, coverScale)
+            if (list.isNotEmpty()) Covers(list, track.id, engine.playing, coverScale) else EmptyStation(station, coverScale)
             Spacer(Modifier.height(4.dp))
             NowCard(track, engine.playing, drawer, clock, onOpen = onToggle)
             Grip(drawer, onToggle, onDragEnd)
@@ -308,19 +311,16 @@ private fun coverColors(b: ImageBitmap): List<Color> {
 }
 
 @Composable
-private fun Header(playing: Boolean) {
+private fun Header(station: Station) {
     val ui = LocalUi.current
     val sound = LocalSound.current
-    val store = LocalStore.current
-    val mode by store.mode.collectAsState()
-    val live = mode == Mode.LIVE
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Logo(Color(0xFFF0F0F0), Modifier.size(26.dp))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             BasicText("Kawaii Radio", style = T.inter(16.sp, FontWeight.Bold, Color.White, lh = 16.sp, ls = 0.01.em))
             Spacer(Modifier.height(3.dp))
-            BasicText("KR-01 · J-POP FM", style = T.pixel(11.sp, K.dimText, ls = 0.12.em, lh = 11.sp))
+            BasicText("KR-01 · ${station.freq}", style = T.pixel(11.sp, K.dimText, ls = 0.12.em, lh = 11.sp))
         }
         // the whole catalogue as a list
         Row(
@@ -333,19 +333,6 @@ private fun Header(playing: Boolean) {
             Px(Glyph.LIST, 12.dp, Color(0xFFB8BBC3))
             BasicText("RO'YXAT", style = T.pixel(12.sp, Color(0xFFB8BBC3), lh = 12.sp))
         }
-        // LIVE switch: on = the shared broadcast for everyone, off = any song (Kawaii Pass)
-        Row(
-            Modifier.darkWell(RoundedCornerShape(9.dp))
-                .tap(onClick = { sound.press(); store.setMode(if (live) Mode.PICK else Mode.LIVE) })
-                .padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // lit = on the broadcast, dark = off (pick your own songs); the number = people on LIVE right now
-            val listeners by store.chat.live.collectAsState()
-            OnAirDot(live, 7)
-            BasicText(if (live && listeners > 0) "LIVE · $listeners" else "LIVE", style = T.pixel(12.sp, if (live) Color(0xFFFF8A95) else K.dimText2, lh = 12.sp))
-        }
     }
 }
 
@@ -356,17 +343,137 @@ private fun OnAirDot(on: Boolean, size: Int) {
     Box(m.background(if (on) K.onAir else K.offDot, CircleShape))
 }
 
+/**
+ * Function slider, like the RADIO / TAPE switch of a cassette deck: a chalk thumb with a grip
+ * rides in a slot cut into the panel. Left = RADIO, the live broadcast everyone hears together.
+ * Right = O'Z TANLOVIM, any song in any order (Kawaii Pass). The free half of
+ * the slot carries the other function engraved, with chevrons showing which way to push.
+ * Drag the thumb or tap anywhere on the slot.
+ */
 @Composable
-private fun Segmented(tab: Tab, onTab: (Tab) -> Unit) {
+private fun ModeSlider() {
     val sound = LocalSound.current
-    val k = TABS.indexOfFirst { it.first == tab }
-    val pos by animateFloatAsState(k.toFloat(), motionSpring(520f, 36f))
+    val store = LocalStore.current
+    val mode by store.mode.collectAsState()
+    val pass by store.pass.collectAsState()
+    val listeners by store.chat.live.collectAsState()
+    val live = mode == Mode.LIVE
+    val scope = rememberCoroutineScope()
+    // 0 = RADIO, 1 = O'Z TANLOVIM
+    val pos = remember { Animatable(if (live) 0f else 1f) }
+    LaunchedEffect(live) { pos.animateTo(if (live) 0f else 1f, motionSpring(420f, 26f)) }
+    val settle = { want: Mode ->
+        if (want != store.mode.value) { sound.press(); store.setMode(want) }
+        // without Kawaii Pass the mode stays LIVE: the thumb springs back
+        scope.launch { pos.animateTo(if (store.live) 0f else 1f, motionSpring(420f, 26f)) }
+        Unit
+    }
+    val slot = RoundedCornerShape(15.dp)
+    val thumb = RoundedCornerShape(12.dp)
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().height(48.dp)
+            .darkWell(slot, spec = 0.07f)
+            .tap(onClick = { settle(if (store.live) Mode.PICK else Mode.LIVE) })
+            .pointerInput(Unit) {
+                val travel = size.width / 2f
+                detectHorizontalDragGestures(
+                    onDragEnd = { settle(if (pos.value > 0.5f) Mode.PICK else Mode.LIVE) },
+                    onDragCancel = { settle(store.mode.value) },
+                ) { change, dx ->
+                    change.consume()
+                    scope.launch { pos.snapTo((pos.value + dx / travel).coerceIn(0f, 1f)) }
+                }
+            }
+            .padding(4.dp),
+    ) {
+        val w = maxWidth / 2
+        val travelPx = constraints.maxWidth / 2f
+        // engraved legends, uncovered by the thumb as it moves
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            Legend(Modifier.weight(1f), alpha = pos.value) {
+                Px(Glyph.RADIO, 12.dp, K.tabOff)
+                BasicText("RADIO", style = T.pixel(13.sp, K.tabOff, ls = 0.08.em, lh = 13.sp))
+                BasicText("‹‹‹", style = T.pixel(12.sp, K.dimText2, lh = 12.sp))
+            }
+            Legend(Modifier.weight(1f), alpha = 1f - pos.value) {
+                BasicText("›››", style = T.pixel(12.sp, K.dimText2, lh = 12.sp))
+                BasicText("O'Z TANLOVIM", style = T.pixel(13.sp, K.tabOff, ls = 0.04.em, lh = 13.sp), maxLines = 1)
+                if (!pass) PassTag()
+            }
+        }
+        // the thumb
+        val onRadio = pos.value < 0.5f
+        Row(
+            Modifier.offset { IntOffset((travelPx * pos.value).toInt(), 0) }
+                .width(w).fillMaxHeight()
+                .raised(thumb)
+                .padding(start = 12.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                BasicText(if (onRadio) "RADIO" else "O'Z TANLOVIM", style = T.micro(12.sp), maxLines = 1)
+                Spacer(Modifier.height(3.dp))
+                BasicText(
+                    when {
+                        !onRadio -> "istalgan qo'shiq"
+                        listeners > 0 -> "jonli efir · $listeners kishi"
+                        else -> "jonli efir"
+                    },
+                    style = T.pixel(10.sp, K.ctlInk.copy(alpha = 0.6f), lh = 10.sp), maxLines = 1,
+                )
+            }
+            Grip()
+        }
+    }
+}
+
+/** One engraved half of the slot; it fades in as the thumb leaves it. */
+@Composable
+private fun Legend(modifier: Modifier, alpha: Float, content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier.graphicsLayer { this.alpha = alpha.coerceIn(0f, 1f) },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
+        content = content,
+    )
+}
+
+/** Tiny gold "PASS" tag: this side needs Kawaii Pass. */
+@Composable
+private fun PassTag() {
+    Box(
+        Modifier.background(K.gold.copy(alpha = 0.16f), RoundedCornerShape(4.dp))
+            .border(1.dp, K.gold.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+    ) { BasicText("PASS", style = T.pixel(9.sp, K.gold, ls = 0.08.em, lh = 9.sp)) }
+}
+
+/** Knurled grip of the slider thumb: three moulded ridges. */
+@Composable
+private fun Grip() {
+    Canvas(Modifier.width(14.dp).height(20.dp)) {
+        val px = 1.dp.toPx()
+        for (i in 0 until 3) {
+            val x = size.width / 2 + (i - 1) * 4.dp.toPx()
+            drawRect(K.groove, topLeft = Offset(x - px, 0f), size = androidx.compose.ui.geometry.Size(px, size.height))
+            drawRect(K.spec, topLeft = Offset(x, 0f), size = androidx.compose.ui.geometry.Size(px, size.height))
+        }
+    }
+}
+
+/** The three stations: J-Pop, OST, Riot Music. */
+@Composable
+private fun Stations(station: Station) {
+    val sound = LocalSound.current
+    val store = LocalStore.current
+    val stations = Station.entries
+    val pos by animateFloatAsState(stations.indexOf(station).toFloat(), motionSpring(520f, 36f))
     BoxWithConstraints(
         Modifier.fillMaxWidth()
             .darkWell(RoundedCornerShape(15.dp), spec = 0.06f)
             .padding(3.dp),
     ) {
-        val w = maxWidth / 3
+        val w = maxWidth / stations.size
         Box(Modifier.matchParentSize()) {
           Box(
             Modifier.offset { IntOffset((w.toPx() * pos).toInt(), 0) }
@@ -377,13 +484,13 @@ private fun Segmented(tab: Tab, onTab: (Tab) -> Unit) {
           )
         }
         Row(Modifier.fillMaxWidth()) {
-            for ((key, label) in TABS) {
-                val color by animateColorAsState(if (key == tab) Color.White else K.tabOff, tween(150))
+            for (s in stations) {
+                val color by animateColorAsState(if (s == station) Color.White else K.tabOff, tween(150))
                 Box(
                     Modifier.weight(1f).padding(vertical = 7.dp)
-                        .tap(onClick = { if (key != tab) { sound.press(); onTab(key) } }),
+                        .tap(onClick = { if (s != station) { sound.press(); store.setStation(s) } }),
                     contentAlignment = Alignment.Center,
-                ) { BasicText(label, style = T.pixel(14.sp, color, lh = 20.sp)) }
+                ) { BasicText(s.label, style = T.pixel(14.sp, color, lh = 20.sp), maxLines = 1) }
             }
         }
     }
@@ -537,36 +644,24 @@ private fun CheckIcon() {
     }
 }
 
+/** A station with no songs yet (Riot Music before its first upload). */
 @Composable
-private fun EmptySaved(premium: Boolean, onPremium: () -> Unit, k: Float) {
+private fun EmptyStation(station: Station, k: Float) {
     Column(
         Modifier.fillMaxWidth().height(260.dp * k),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
     ) {
         Box(Modifier.size(48.dp).darkWell(RoundedCornerShape(16.dp), color = Color(0xFF1A1B1E), spec = 0f), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.size(20.dp)) {
-                scale(size.width / 16f, pivot = Offset.Zero) {
-                    drawPath(Path().apply { moveTo(3f, 1.5f); lineTo(13f, 1.5f); lineTo(13f, 14.5f); lineTo(8f, 11.3f); lineTo(3f, 14.5f); close() }, Color(0xFFFFD36B))
-                }
-            }
+            Px(Glyph.RADIO, 20.dp, Color(0xFFFF8A95))
         }
-        BasicText(if (premium) "Hali saqlangan qo'shiq yo'q" else "Kawaii Pass imkoniyati", style = T.pixel(14.sp, Color.White, weight = FontWeight.SemiBold))
+        BasicText("${station.label} tez orada", style = T.pixel(14.sp, Color.White, weight = FontWeight.SemiBold))
         BasicText(
-            if (premium) "«Saqlash» tugmasi bilan qo'shiqlarni ilova ichida saqlang." else "Sevimli qo'shiqlarni ilova ichida saqlab, internetsiz tinglang.",
+            if (station == Station.RIOT) "League of Legends, Valorant va Arcane qo'shiqlari shu yerda efirga chiqadi."
+            else "Bu stansiyada hali qo'shiq yo'q.",
             Modifier.widthIn(max = 250.dp),
             style = T.pixel(12.sp, K.tabOff, lh = 16.sp).copy(textAlign = TextAlign.Center),
         )
-        if (!premium) {
-            Box(
-                Modifier.padding(top = 4.dp)
-                    .dropShadow(CircleShape, Shadow(12.dp, Color(245, 185, 59, (0.35f * 255).toInt()), offset = DpOffset(0.dp, 4.dp)))
-                    .background(Brush.verticalGradient(listOf(Color(0xFFFFE08A), K.gold)), CircleShape)
-                    .innerShadow(CircleShape, Shadow(0.dp, Color(1f, 1f, 1f, 0.6f), offset = DpOffset(0.dp, 1.dp)))
-                    .pressClick(onClick = onPremium)
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-            ) { BasicText("Kawaii Pass", style = T.pixel(13.sp, Color(0xFF3A2A05), weight = FontWeight.SemiBold)) }
-        }
     }
 }
 

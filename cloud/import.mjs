@@ -4,10 +4,12 @@
  * Title, artist, duration and cover come from the files' own tags; tracks already in the cloud
  * are skipped, so re-running it is safe.
  *
- *   node cloud/import.mjs <folder> [--dry] [--ost list.txt] [--skip "Artist - Title" ...]
+ *   node cloud/import.mjs <folder> [--dry] [--ost list.txt] [--riot list.txt] [--skip "Artist - Title" ...]
  *
  *   --dry        only print what would be uploaded
- *   --ost FILE   file names / titles (one per line) that go to the "Anime OST" tab
+ *   --ost FILE   file names / titles (one per line) of music without words: the OST station
+ *   --riot FILE  file names / titles (one per line) of Riot Games music: the Riot Music station
+ *   everything else goes to the J-Pop station
  *   --skip TEXT  extra "Artist - Title" (or file name) to leave out, repeatable
  *
  * Needs cloud/.secrets (written by setup.sh).
@@ -23,12 +25,14 @@ const MIME = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '
 
 /* ---------- args ---------- */
 const args = process.argv.slice(2);
-const folder = args.find((a, i) => !a.startsWith('--') && !['--ost', '--skip'].includes(args[i - 1]));
-if (!folder) { console.error('usage: node cloud/import.mjs <folder> [--dry] [--ost list.txt] [--skip "Artist - Title"]'); process.exit(1); }
+const folder = args.find((a, i) => !a.startsWith('--') && !['--ost', '--riot', '--skip'].includes(args[i - 1]));
+if (!folder) { console.error('usage: node cloud/import.mjs <folder> [--dry] [--ost list.txt] [--riot list.txt] [--skip "Artist - Title"]'); process.exit(1); }
 const dry = args.includes('--dry');
 const listArg = (flag) => args.flatMap((a, i) => (args[i - 1] === flag ? [a] : []));
 const norm = (s) => s.normalize('NFKC').toLowerCase().replace(/\(feat[^)]*\)|feat\..*$/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
-const ostList = listArg('--ost').flatMap((f) => readFileSync(f, 'utf8').split('\n')).map((l) => l.trim()).filter(Boolean).map(norm);
+const readList = (flag) => listArg(flag).flatMap((f) => readFileSync(f, 'utf8').split('\n')).map((l) => l.trim()).filter(Boolean).map(norm);
+const ostList = readList('--ost');
+const riotList = readList('--riot');
 const skipList = listArg('--skip').map(norm);
 
 /* ---------- secrets ---------- */
@@ -61,8 +65,9 @@ for (const f of files) {
     skipped++;
     continue;
   }
-  const ost = ostList.includes(norm(stem)) || ostList.includes(norm(title));
-  const category = ost ? 'Anime OST' : 'J-Pop';
+  const inList = (l) => l.includes(norm(stem)) || l.includes(norm(title));
+  // the category picks the station (stationOf in src/index.ts)
+  const category = inList(riotList) ? 'Riot Games' : inList(ostList) ? 'OST Instrumental' : 'J-Pop';
   const duration = Math.round(meta.format.duration ?? 0);
   if (dry) { console.log(`+ ${artist} — ${title} [${category}, ${duration}s${c.picture?.length ? ', cover' : ''}]`); added++; continue; }
 

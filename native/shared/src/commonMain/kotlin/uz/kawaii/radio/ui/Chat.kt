@@ -139,7 +139,7 @@ fun Chat(active: Boolean) {
     }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        val sub = if (connected) "$online onlayn · $live LIVE'da" else "Ulanmoqda…"
+        val sub = if (connected) "$online onlayn · $live radioda" else "Ulanmoqda…"
         PageHeader("Chat", sub) {
             // the mini player moves up here on this page: cover, song and artist in the corner
             AnimatedVisibility(
@@ -604,7 +604,7 @@ private fun UserSheet() {
             Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (shown.admin) Badge("ADMIN", K.gold)
                 when {
-                    shown.live -> Badge("● LIVE", K.onAir)
+                    shown.live -> Badge("● RADIO", K.onAir)
                     shown.online -> Badge("● ONLAYN", K.ledGreen)
                     shown.seen > 0 -> BasicText("oxirgi marta: ${uz.kawaii.radio.data.formatWhen(shown.seen)}", style = T.pixel(12.sp, K.inkSoft))
                 }

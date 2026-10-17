@@ -1,5 +1,6 @@
 package uz.kawaii.radio.ui.sheets
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import uz.kawaii.radio.data.Station
 import uz.kawaii.radio.data.Track
 import uz.kawaii.radio.data.formatDuration
 import uz.kawaii.radio.data.mainArtist
@@ -56,7 +58,7 @@ import uz.kawaii.radio.ui.theme.K
 import uz.kawaii.radio.ui.theme.T
 import uz.kawaii.radio.ui.theme.emboss
 
-private enum class Shelf(val label: String) { ALL("Hammasi"), JPOP("J-Pop"), OST("Anime OST"), SAVED("Saqlangan") }
+private enum class Shelf(val label: String) { ALL("Hammasi"), JPOP("J-Pop"), OST("OST"), RIOT("Riot Music"), SAVED("Saqlangan") }
 private enum class Order(val label: String) { AZ("A–Z"), ARTIST("Ijrochi"), NEW("Yangi") }
 
 private fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
@@ -86,8 +88,9 @@ fun LibrarySheet(open: Boolean, onClose: () -> Unit) {
         tracks.filter {
             when (shelf) {
                 Shelf.ALL -> true
-                Shelf.JPOP -> !it.isOst
-                Shelf.OST -> it.isOst
+                Shelf.JPOP -> it.station == Station.JPOP
+                Shelf.OST -> it.station == Station.OST
+                Shelf.RIOT -> it.station == Station.RIOT
                 Shelf.SAVED -> it.id in saved
             } && (q.isEmpty() || norm(it.title).contains(q) || norm(it.artist).contains(q))
         }.let { l ->
@@ -141,7 +144,10 @@ fun LibrarySheet(open: Boolean, onClose: () -> Unit) {
                 }
             }
         }
-        Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             for (s in Shelf.entries) Chip(s.label, shelf == s) { shelf = s }
         }
         Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

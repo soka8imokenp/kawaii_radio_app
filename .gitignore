@@ -15,3 +15,6 @@ local.properties
 # local music to upload with cloud/import.mjs (never committed)
 soka8imo_songs/
 *.mp3
+
+# partner project (Kawaii-bot) — contains secrets, never commit
+syntax/

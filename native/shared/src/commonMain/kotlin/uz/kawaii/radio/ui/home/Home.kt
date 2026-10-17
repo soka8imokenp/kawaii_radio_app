@@ -50,6 +50,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import uz.kawaii.radio.AudioEngine
 import uz.kawaii.radio.RadioStore
+import uz.kawaii.radio.data.Station
 import uz.kawaii.radio.data.Track
 import uz.kawaii.radio.ui.LocalStore
 import uz.kawaii.radio.ui.UiState
@@ -70,19 +71,11 @@ import uz.kawaii.radio.ui.theme.K
 import uz.kawaii.radio.ui.theme.T
 import uz.kawaii.radio.ui.theme.motionSpring
 
-enum class Tab { JPOP, OST, SAVED }
-
 data class Entry(val t: Track, val i: Int)
 
-fun tabList(tab: Tab, tracks: List<Track>, saved: List<String>): List<Entry> =
-    tracks.mapIndexedNotNull { i, t ->
-        val keep = when (tab) {
-            Tab.SAVED -> t.id in saved
-            Tab.OST -> t.isOst
-            Tab.JPOP -> !t.isOst
-        }
-        if (keep) Entry(t, i) else null
-    }
+/** Songs of a station, with their positions in the whole catalogue. */
+fun stationList(station: Station, tracks: List<Track>): List<Entry> =
+    tracks.mapIndexedNotNull { i, t -> if (t.station == station) Entry(t, i) else null }
 
 /**
  * Playback position in seconds: follows every frame while a song plays (smooth waveform scroll),
@@ -119,16 +112,11 @@ fun Home(ui: UiState) {
     val t = store.current(tracks, engine.id) ?: return NoSignal()
     val clock = rememberClock(store.platform.audio, engine.playing)
 
-    var tab by remember { mutableStateOf(if (t.isOst) Tab.OST else Tab.JPOP) }
-    LaunchedEffect(t.id) {
-        if (store.live && tab != Tab.SAVED) {
-            tab = if (t.isOst) Tab.OST else Tab.JPOP
-        }
-    }
+    val station by store.station.collectAsState()
     val isLiked = t.id in liked
     val isSaved = t.id in saved
-    // the tuner walks the current band; an empty Saved band falls back to J-Pop/OST
-    val band = tabList(tab, tracks, saved).ifEmpty { tabList(if (t.isOst) Tab.OST else Tab.JPOP, tracks, saved) }
+    // the tuner walks the station's songs; a station with no songs yet falls back to the song's own one
+    val band = remember(station, tracks, t.station) { stationList(station, tracks).ifEmpty { stationList(t.station, tracks) } }
     val pos = band.indexOfFirst { it.i == tracks.indexOf(t) }.coerceAtLeast(0)
     val at = { d: Int -> band[(((pos + d) % band.size) + band.size) % band.size] }
     val downloads by store.downloads.collectAsState()
@@ -148,27 +136,18 @@ fun Home(ui: UiState) {
         onDispose { }
     }
 
-    val changeTab = { next: Tab ->
-        tab = next
-        val list = tabList(next, tracks, saved)
-        // live broadcast: tabs only browse, the song on air keeps playing
-        if (!store.live && list.isNotEmpty() && list.none { it.t.id == t.id }) store.play(list[0].t.id, list.map { it.t.id })
-    }
-
     val density = LocalDensity.current.density
     // the controls slide out of the bottom while the lyrics drawer is open: keep them inside the screen
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val rootH = constraints.maxHeight.toFloat()
         // short screens: the cover flow gives up height so the hardware controls below always fit
-        // (panel without covers ≈ 242dp, controls ≈ 236dp)
-        val coverScale = ((maxHeight.value - 242f - 236f) / 260f).coerceIn(0.62f, 1f)
+        // (panel without covers ≈ 294dp, controls ≈ 236dp)
+        val coverScale = ((maxHeight.value - 294f - 236f) / 260f).coerceIn(0.62f, 1f)
         Column(Modifier.fillMaxSize()) {
             TopPanel(
                 track = t,
                 tracks = tracks,
-                tab = tab,
-                onTab = changeTab,
-                onPremium = { ui.premium = true },
+                station = station,
                 drawer = drawer,
                 clock = clock,
                 coverScale = coverScale,

@@ -82,7 +82,9 @@ def kawaii_add_track(
         audio_file_id: Telegram file_id of the audio the user sent.
         title: Song title.
         artist: Performer.
-        category: "Anime OST" for anime openings/endings/soundtracks, otherwise a genre like "J-Pop", "J-Rock", "Vocaloid".
+        category: decides the radio station. Songs with vocals (J-Pop, J-Rock, Vocaloid, anime openings/endings) ->
+            a genre like "J-Pop", "J-Rock", "Vocaloid", "Anime"; music without words (orchestra, piano, soundtrack
+            covers) -> "OST Instrumental"; music from Riot Games (League of Legends, Valorant, Arcane) -> "Riot Games".
         duration: Length in seconds (from Telegram audio.duration).
         bpm: Approximate tempo.
         energy: 0-100, how energetic the song is.
@@ -123,7 +125,7 @@ def kawaii_update_track(track_id: str, fields_json: str) -> dict:
 
     Args:
         track_id: id from kawaii_list_tracks.
-        fields_json: JSON object with the fields to change, e.g. {"category": "Anime OST"},
+        fields_json: JSON object with the fields to change, e.g. {"category": "OST Instrumental"},
             {"title": "..."}, {"lyrics": {"uzbek": "[00:01.00] ...", "romaji": "..."}},
             {"info": {"description": "...", "details": [{"title": "...", "text": "..."}]}}.
             Use null to remove lyrics or info.

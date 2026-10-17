@@ -245,6 +245,7 @@ fun InfoSheet(id: String?, onClose: () -> Unit) {
 fun PremiumSheet(open: Boolean, onClose: () -> Unit) {
     val store = LocalStore.current
     val perks = listOf(
+        "O'z tanlovim" to "Radiodan tashqari istalgan qo'shiqni, istalgan tartibda tinglang",
         "Ilova ichida saqlash" to "Qo'shiqlar «Saqlangan» bo'limida doim qo'l ostingizda",
         "Internetsiz tinglash" to "Saqlangan qo'shiqlar oflayn ham ijro etiladi",
         "Reklamasiz efir" to "Hech narsa musiqangizni bo'lmaydi",
@@ -256,7 +257,7 @@ fun PremiumSheet(open: Boolean, onClose: () -> Unit) {
         ) {
             BasicText("KAWAII PASS", style = T.pixel(22.sp, K.lcdInk, lh = 22.sp).copy(shadow = lcdShadow()))
             BasicText(
-                "Saqlash funksiyasi obunachilar uchun", Modifier.padding(top = 8.dp),
+                "Bu imkoniyat obunachilar uchun", Modifier.padding(top = 8.dp),
                 style = T.pixel(13.sp, K.lcdInk.copy(alpha = 0.7f)).copy(textAlign = TextAlign.Center),
             )
         }
@@ -376,18 +377,18 @@ fun ArtistSheet(open: Boolean, onClose: () -> Unit) {
 /** Kawaii Pass holder tried to pick, skip or seek while on the broadcast: leave it? */
 @Composable
 fun LeaveLiveSheet(open: Boolean, onAnswer: (leave: Boolean) -> Unit) {
-    Sheet(open, { onAnswer(false) }, "LIVE efir") {
+    Sheet(open, { onAnswer(false) }, "Radio efiri") {
         Column(
             Modifier.fillMaxWidth().lcd(RoundedCornerShape(18.dp)).border(3.dp, K.lcdBorder, RoundedCornerShape(18.dp)).padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BasicText("● LIVE", style = T.pixel(22.sp, K.lcdInk, lh = 22.sp).copy(shadow = lcdShadow()))
+            BasicText("● RADIO", style = T.pixel(22.sp, K.lcdInk, lh = 22.sp).copy(shadow = lcdShadow()))
             BasicText(
-                "Siz jonli efirdasiz. Efirdan chiqasizmi?", Modifier.padding(top = 8.dp),
+                "Siz radio efiridasiz. O'z tanlovingizga o'tasizmi?", Modifier.padding(top = 8.dp),
                 style = T.pixel(14.sp, K.lcdInk.copy(alpha = 0.8f)).copy(textAlign = TextAlign.Center),
             )
             BasicText(
-                "Chiqsangiz, qo'shiqlarni o'zingiz tanlaysiz. Efirga LIVE tugmasi bilan qaytasiz.", Modifier.padding(top = 6.dp),
+                "U yerda qo'shiqlarni o'zingiz tanlaysiz. Efirga yuqoridagi RADIO tugmasi bilan qaytasiz.", Modifier.padding(top = 6.dp),
                 style = T.pixel(12.sp, K.lcdInk.copy(alpha = 0.6f), lh = 16.sp).copy(textAlign = TextAlign.Center),
             )
         }

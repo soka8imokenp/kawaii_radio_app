@@ -34,6 +34,7 @@ import uz.kawaii.radio.data.CLOUD_URL
 import uz.kawaii.radio.data.lookupLyrics
 import uz.kawaii.radio.data.monthKey
 import uz.kawaii.radio.data.CloudPlaylist
+import uz.kawaii.radio.data.Station
 import uz.kawaii.radio.data.Track
 import uz.kawaii.radio.data.cachedCloud
 import uz.kawaii.radio.data.json
@@ -50,7 +51,7 @@ enum class Mode { LIVE, PICK }
 data class Slot(val id: String, val start: Long, val duration: Long)
 
 @Serializable
-private data class RadioSchedule(val serverTime: Long, val slots: List<Slot> = emptyList())
+private data class RadioSchedule(val serverTime: Long, val slots: List<Slot> = emptyList(), val station: String? = null)
 enum class ThemeMode { AUTO, LIGHT, DARK }
 
 /** Listening history of one song. */
@@ -81,6 +82,7 @@ private data class Saved(
     /** "2026-10" → song id → seconds listened that month */
     val months: Map<String, Map<String, Long>> = emptyMap(),
     val mode: String = "live",
+    val station: String = "jpop",
 )
 
 private const val STATE_KEY = "kr01-state"
@@ -180,6 +182,28 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     val mode: StateFlow<Mode> = _mode.asStateFlow()
     val live: Boolean get() = _mode.value == Mode.LIVE
 
+    private val _station = MutableStateFlow(Station.entries.firstOrNull { it.key == saved0.station } ?: Station.JPOP)
+    /** The station on the dial: in LIVE its broadcast plays, otherwise its songs are the list on screen. */
+    val station: StateFlow<Station> = _station.asStateFlow()
+
+    /**
+     * Turns the dial to another station. LIVE tunes in to that station's broadcast (playing on if
+     * music was playing); otherwise the songs of the station become the queue, unless the song
+     * that plays already belongs to it.
+     */
+    fun setStation(s: Station) {
+        if (s == _station.value) return
+        _station.value = s
+        persist()
+        if (live) {
+            scope.launch { tuneIn(play = engine.value.playing) }
+        } else {
+            val list = _tracks.value.filter { it.station == s }
+            val cur = track(engine.value.id)
+            if (list.isNotEmpty() && cur?.station != s) play(list[0].id, list.map { it.id })
+        }
+    }
+
     private val _passNeeded = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     /** Fires when the listener tried something that needs Kawaii Pass (picking a song in the live broadcast…). */
     val passNeeded: SharedFlow<Unit> = _passNeeded.asSharedFlow()
@@ -237,20 +261,24 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
 
     /* ---------- live broadcast ---------- */
 
-    private var schedule: List<Slot> = emptyList()
+    /** Timetables of the stations, as far as this phone knows them. */
+    private val schedules = HashMap<Station, List<Slot>>()
+    private val schedule: List<Slot> get() = schedules[_station.value].orEmpty()
+    /** Cloud without stations (an older Worker): one timetable for every song, used for every station. */
+    private var oneSchedule = false
     /** Server clock minus phone clock, so every phone agrees on "now". */
     private var skew = 0L
     private fun liveNow() = nowMs() + skew
 
-    private suspend fun fetchSchedule(): Boolean {
+    private suspend fun fetchSchedule(st: Station): Boolean {
         val t0 = nowMs()
-        val text = runCatching { platform.httpGetText("$CLOUD_URL/radio") }.getOrNull() ?: return false
+        val text = runCatching { platform.httpGetText("$CLOUD_URL/radio?station=${st.key}") }.getOrNull() ?: return false
         val t1 = nowMs()
         val r = runCatching { json.decodeFromString<RadioSchedule>(text) }.getOrNull() ?: return false
-        if (r.slots.isEmpty()) return false
         skew = r.serverTime - (t0 + t1) / 2
-        schedule = r.slots
-        return true
+        oneSchedule = r.station == null
+        if (oneSchedule) Station.entries.forEach { schedules[it] = r.slots } else schedules[st] = r.slots
+        return r.slots.isNotEmpty()
     }
 
     /** The slot on air at [at] among songs this phone knows, or null. */
@@ -264,11 +292,14 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
      * following songs of the timetable queued behind it.
      */
     private suspend fun tuneIn(play: Boolean) {
-        if (schedule.isEmpty() || schedule.last().start - liveNow() < 30 * 60_000) fetchSchedule()
+        val st = _station.value
+        if (schedule.isEmpty() || schedule.last().start - liveNow() < 30 * 60_000) fetchSchedule(st)
+        if (st != _station.value) return // the dial moved on while we were asking
         val now = liveNow()
         val byId = _tracks.value.associateBy { it.id }
         val ahead = schedule.filter { it.start + it.duration > now && it.id in byId }
-        if (ahead.isEmpty()) return
+        // nothing on this station yet (e.g. Riot Music before its first songs): silence, not the old station
+        if (ahead.isEmpty()) { if (track(engine.value.id)?.station != st) audio.pause(); return }
         // the same song can't sit twice in the engine's queue: stop at the first repeat
         val seen = HashSet<String>()
         val slots = ahead.takeWhile { seen.add(it.id) }
@@ -620,6 +651,7 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
             profile = _profile.value,
             months = _months.value,
             mode = if (_mode.value == Mode.PICK) "pick" else "live",
+            station = _station.value.key,
         )
         kv.set(STATE_KEY, json.encodeToString(Saved.serializer(), s))
     }

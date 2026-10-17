@@ -3,7 +3,8 @@
  *
  *   GET    /playlist.json           public  – tracks the app shows (merged after the built-in ones)
  *   GET    /files/<key>             public  – audio / covers, with Range support for seeking
- *   GET    /radio                   public  – the live broadcast: which song plays when (same for everyone)
+ *   GET    /radio?station=<s>       public  – the live broadcast of a station (jpop | ost | riot): which song plays when
+ *                                            (same for everyone); without ?station every song, for old app builds
  *   GET    /chat                    public  – WebSocket of the global listeners' chat (see chat.ts)
  *   PUT    /api/stickers/<file>     token   – upload a sticker file (or pack.json) to stickers/
  *   PUT    /api/data/<name>.json    token   – app data (artists.json…), served at /files/data/<name>.json
@@ -91,7 +92,9 @@ async function route(req: Request, env: Env): Promise<Response> {
     return env.CHAT.get(env.CHAT.idFromName('global')).fetch(req);
   }
   if (path === '/radio' && m === 'GET') {
-    return json(await radio(env), 200, { 'Cache-Control': 'no-store' });
+    const s = url.searchParams.get('station');
+    if (s !== null && !STATIONS.includes(s as Station)) throw new HttpError(400, `station must be one of ${STATIONS.join(', ')}`);
+    return json(await radio(env, (s as Station) ?? undefined), 200, { 'Cache-Control': 'no-store' });
   }
   if ((path === '/playlist.json' || path === '/api/tracks') && (m === 'GET' || m === 'HEAD')) {
     const pl = await readPlaylist(env);
@@ -126,7 +129,7 @@ async function route(req: Request, env: Env): Promise<Response> {
       return json({ ok: true, url: `/files/stickers/${name}` });
     }
     if (seg[1] === 'radio' && seg[2] === 'reset' && m === 'POST') {
-      await env.BUCKET.delete(RADIO_KEY);
+      await env.BUCKET.delete([RADIO_KEY, ...STATIONS.map((s) => `radio-${s}.json`)]);
       return json({ ok: true, radio: await radio(env) });
     }
     if (seg[1] !== 'tracks') throw new HttpError(404, 'unknown endpoint');
@@ -468,6 +471,25 @@ async function deleteTrack(env: Env, id: string): Promise<Response> {
  */
 
 const RADIO_KEY = 'radio.json';
+
+/** Each station has its own broadcast (its own chain of cycles, radio-<station>.json). */
+const STATIONS = ['jpop', 'ost', 'riot'] as const;
+type Station = (typeof STATIONS)[number];
+const RIOT_WORDS = ['riot', 'league', 'valorant', 'arcane', 'lol', 'tft', 'wild rift'];
+const INSTRUMENTAL_WORDS = ['instrumental', 'orchestra', 'piano', 'soundtrack'];
+
+/**
+ * Riot words in the category → riot; "Instrumental" (or an "OST" with no lyrics) → ost; everything
+ * else, anime openings with vocals included, → jpop. Same rule as stationOf() in the app (Track.kt).
+ */
+function stationOf(t: Track): Station {
+  const c = (t.category || '').toLowerCase();
+  const words = c.split(/[^a-z]+/).filter(Boolean);
+  if (RIOT_WORDS.some((w) => (w.includes(' ') ? c.includes(w) : words.includes(w)))) return 'riot';
+  if (INSTRUMENTAL_WORDS.some((w) => c.includes(w))) return 'ost';
+  if (words.includes('ost') && !t.lyrics) return 'ost';
+  return 'jpop';
+}
 /** At most this many slots are handed to the app at once. */
 const RADIO_AHEAD = 80;
 
@@ -506,14 +528,16 @@ function makeCycle(tracks: Track[], start: number, avoidFirst?: string, seed = s
   return { start, end: at, slots };
 }
 
-async function radio(env: Env) {
+async function radio(env: Env, station?: Station) {
   const now = Date.now();
+  const key = station ? `radio-${station}.json` : RADIO_KEY;
   for (let attempt = 0; attempt < 5; attempt++) {
-    const obj = await env.BUCKET.get(RADIO_KEY);
+    const obj = await env.BUCKET.get(key);
     const state: RadioState = obj ? ((await obj.json()) as RadioState) : { cycles: [] };
     let cycles = state.cycles.filter((c) => c.end > now - 60_000);
     let changed = cycles.length !== state.cycles.length;
     const playlist = (await readPlaylist(env)).data;
+    const pool = station ? playlist.tracks.filter((t) => stationOf(t) === station) : playlist.tracks;
 
     // songs were added or removed: re-plan everything after the frozen window. Songs of the
     // current cycle that have not been scheduled inside the window (new ones included) are
@@ -526,7 +550,7 @@ async function radio(env: Env) {
         const kept = c.slots.filter((s) => s.start < freeze);
         const used = new Set(kept.map((s) => s.id));
         const tailStart = kept.length ? kept[kept.length - 1].start + kept[kept.length - 1].duration : c.start;
-        const tail = makeCycle(playlist.tracks.filter((t) => !used.has(t.id)), tailStart, kept[kept.length - 1]?.id, tailStart + playlist.version);
+        const tail = makeCycle(pool.filter((t) => !used.has(t.id)), tailStart, kept[kept.length - 1]?.id, tailStart + playlist.version);
         cycles = [...cycles.slice(0, k), { start: c.start, end: tail?.end ?? tailStart, slots: [...kept, ...(tail?.slots ?? [])] }];
       }
       changed = true;
@@ -534,8 +558,8 @@ async function radio(env: Env) {
 
     // nobody listened for a long time: the broadcast simply starts again from now
     if (!cycles.length || cycles[0].start > now) {
-      const c = makeCycle(playlist.tracks, now - (now % 1000));
-      if (!c) return { serverTime: now, slots: [] };
+      const c = makeCycle(pool, now - (now % 1000));
+      if (!c) return { serverTime: now, station, slots: [] };
       cycles = [c];
       changed = true;
     }
@@ -543,7 +567,7 @@ async function radio(env: Env) {
     // a new cycle (with every song, new ones included) starts as soon as the previous one ends
     while (cycles[cycles.length - 1].end - now < FROZEN_MS + 3600_000) {
       const last = cycles[cycles.length - 1];
-      const c = makeCycle(playlist.tracks, last.end, last.slots[last.slots.length - 1]?.id);
+      const c = makeCycle(pool, last.end, last.slots[last.slots.length - 1]?.id);
       if (!c) break;
       cycles.push(c);
       changed = true;
@@ -552,13 +576,13 @@ async function radio(env: Env) {
     if (changed) {
       const opts: R2PutOptions = { httpMetadata: { contentType: 'application/json' } };
       if (obj) opts.onlyIf = { etagMatches: obj.etag };
-      const ok = await env.BUCKET.put(RADIO_KEY, JSON.stringify({ cycles, version: playlist.version }), opts);
+      const ok = await env.BUCKET.put(key, JSON.stringify({ cycles, version: playlist.version }), opts);
       if (!ok) { await new Promise((r) => setTimeout(r, 80 + Math.random() * 150)); continue; } // another request won, use its timetable
     }
 
     // only the frozen window: what phones keep is exactly what can no longer change
     const slots = cycles.flatMap((c) => c.slots).filter((s) => s.start + s.duration > now && s.start < now + FROZEN_MS).slice(0, RADIO_AHEAD);
-    return { serverTime: Date.now(), slots };
+    return { serverTime: Date.now(), station, slots };
   }
   throw new HttpError(409, 'radio is busy, try again');
 }
