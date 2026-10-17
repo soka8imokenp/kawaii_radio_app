@@ -88,7 +88,7 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (path === '/' && m === 'GET') {
     return json({ ok: true, service: 'kawaii-radio-cloud', playlist: '/playlist.json', docs: 'see cloud/AGENT.md in the app repo' });
   }
-  if (path === '/chat' || path === '/chat/push' || path === '/chat/avatar') {
+  if (path === '/chat' || path === '/chat/push' || path === '/chat/avatar' || path === '/chat/play' || path === '/chat/trending') {
     return env.CHAT.get(env.CHAT.idFromName('global')).fetch(req);
   }
   if (path === '/radio' && m === 'GET') {

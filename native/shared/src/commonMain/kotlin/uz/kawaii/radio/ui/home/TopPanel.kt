@@ -312,8 +312,6 @@ private fun coverColors(b: ImageBitmap): List<Color> {
 
 @Composable
 private fun Header(station: Station) {
-    val ui = LocalUi.current
-    val sound = LocalSound.current
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Logo(Color(0xFFF0F0F0), Modifier.size(26.dp))
         Spacer(Modifier.width(10.dp))
@@ -321,17 +319,6 @@ private fun Header(station: Station) {
             BasicText("Kawaii Radio", style = T.inter(16.sp, FontWeight.Bold, Color.White, lh = 16.sp, ls = 0.01.em))
             Spacer(Modifier.height(3.dp))
             BasicText("KR-01 · ${station.freq}", style = T.pixel(11.sp, K.dimText, ls = 0.12.em, lh = 11.sp))
-        }
-        // the whole catalogue as a list
-        Row(
-            Modifier.padding(end = 8.dp).darkWell(RoundedCornerShape(9.dp))
-                .tap(onClick = { sound.press(); ui.library = true })
-                .padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
-            Px(Glyph.LIST, 12.dp, Color(0xFFB8BBC3))
-            BasicText("RO'YXAT", style = T.pixel(12.sp, Color(0xFFB8BBC3), lh = 12.sp))
         }
     }
 }

@@ -108,6 +108,7 @@ fun Chat(active: Boolean) {
     val live by chat.live.collectAsState()
     val hasMore by chat.hasMore.collectAsState()
     val stickers by chat.stickers.collectAsState()
+    val room by chat.room.collectAsState()
     val engine by store.engine.collectAsState()
 
     var draft by remember { mutableStateOf("") }
@@ -147,6 +148,21 @@ fun Chat(active: Boolean) {
                 enter = fadeIn(tween(260, delayMillis = 120)) + slideInHorizontally(tween(320, delayMillis = 120)) { it / 2 },
                 exit = fadeOut(tween(150)) + slideOutHorizontally(tween(200)) { it / 2 },
             ) { NowPlayingChip() }
+        }
+
+        room.pin?.let { pin ->
+            Row(
+                Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp).fillMaxWidth().tray(RoundedCornerShape(14.dp))
+                    .tap(onClick = { sound.press(); selectedMsg = pin }).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(Modifier.width(3.dp).height(30.dp).border(2.dp, K.gold, RoundedCornerShape(2.dp)))
+                Column(Modifier.weight(1f)) {
+                    BasicText("QADALGAN · ${pin.name}", style = T.micro(10.sp, K.inkSoft), maxLines = 1)
+                    BasicText(preview(pin), style = T.pixel(13.sp, K.ink), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+            }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -219,9 +235,17 @@ fun Chat(active: Boolean) {
             }
         }
 
-        if (me.banned) {
+        val mutedFor = ((me.mutedUntil - uz.kawaii.radio.nowMs()) / 60_000).coerceAtLeast(0) + 1
+        val blockedNote = when {
+            me.banned -> "Siz chatda bloklangansiz"
+            me.admin -> null
+            me.mutedUntil > uz.kawaii.radio.nowMs() -> "Admin sizni $mutedFor daqiqaga ovozsiz qildi"
+            room.locked -> "Chat vaqtincha yopiq: faqat adminlar yozadi"
+            else -> null
+        }
+        if (blockedNote != null) {
             BasicText(
-                "Siz chatda bloklangansiz", Modifier.fillMaxWidth().padding(16.dp),
+                blockedNote, Modifier.fillMaxWidth().padding(16.dp),
                 style = T.pixel(14.sp, K.onAir).copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
             )
         } else {
@@ -282,6 +306,8 @@ fun Chat(active: Boolean) {
         onDelete = { m -> chat.delete(m) },
         onBan = { m -> chat.ban(m.uid, true) },
         onReact = { m, e -> chat.react(m, e) },
+        onPin = { m -> chat.pin(if (room.pin?.id == m.id) null else m) },
+        pinned = selectedMsg?.let { s -> room.pin?.id == s.id } == true,
     )
 
     UserSheet()
@@ -453,6 +479,8 @@ private fun MessageActionSheet(
     onDelete: (ChatMsg) -> Unit,
     onBan: (ChatMsg) -> Unit,
     onReact: (ChatMsg, String) -> Unit,
+    onPin: (ChatMsg) -> Unit = {},
+    pinned: Boolean = false,
 ) {
     val sound = LocalSound.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -543,6 +571,16 @@ private fun MessageActionSheet(
                 }
             }
 
+            if (admin && !m.pending) {
+                PixelKey(
+                    if (pinned) "Qadashni olib tashlash" else "Qadash (hammaga tepada)",
+                    Modifier.fillMaxWidth(),
+                    glyph = Glyph.STAR,
+                    glyphSize = 14.dp,
+                    height = 46.dp,
+                ) { onDismiss(); onPin(m) }
+            }
+
             // Secondary action keys (Profile, Delete, Ban)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!mine) {
@@ -627,8 +665,21 @@ private fun UserSheet() {
                 }
                 if (!c?.top.isNullOrEmpty()) {
                     BasicText("KO'P TINGLAGANLARI", style = T.micro(11.sp, K.inkSoft))
-                    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        c!!.top.forEachIndexed { i, a -> Chip("${i + 1}. $a", false) { } }
+                    // a ranked list, one artist per line: long names never squeeze each other
+                    Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        c!!.top.forEachIndexed { i, a ->
+                            Row(
+                                Modifier.fillMaxWidth().raised(RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                BasicText("${i + 1}", style = T.pixel(16.sp, if (i == 0) K.gold else K.inkSoft, lh = 16.sp))
+                                BasicText(
+                                    a, Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    style = T.pixel(14.sp, K.ink, lh = 16.sp),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -656,8 +707,15 @@ private fun UserSheet() {
                 style = T.pixel(12.sp, K.inkSoft).copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
             )
         }
+        if (me.admin && shown.uid != me.uid) {
+            Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (shown.mutedUntil > uz.kawaii.radio.nowMs()) PixelKey("Ovozni yoqish", Modifier.weight(1f), height = 46.dp) { chat.mute(shown.uid, 0); chat.closeUser() }
+                else PixelKey("Ovozsiz 1 soat", Modifier.weight(1f), height = 46.dp) { chat.mute(shown.uid, 60); chat.closeUser() }
+                if (shown.banned) PixelKey("Blokdan chiqarish", Modifier.weight(1f), height = 46.dp) { chat.ban(shown.uid, false); chat.closeUser() }
+            }
+        }
         if (me.admin && shown.uid != me.uid && !shown.banned) {
-            PixelKey("Bloklash", Modifier.padding(top = 12.dp).fillMaxWidth(), height = 46.dp) { chat.ban(shown.uid, true); chat.closeUser() }
+            PixelKey("Bloklash", Modifier.padding(top = 8.dp).fillMaxWidth(), height = 46.dp) { chat.ban(shown.uid, true); chat.closeUser() }
         }
     }
 }

@@ -1,5 +1,6 @@
 package uz.kawaii.radio.ui.sheets
 
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -163,11 +164,15 @@ fun LibrarySheet(open: Boolean, onClose: () -> Unit) {
             if (list.isEmpty()) item { BasicText("Hech narsa topilmadi", Modifier.padding(top = 24.dp), style = T.pixel(14.sp, K.inkSoft)) }
             for ((head, songs) in sections) {
                 if (head.isNotEmpty()) stickyHeader(key = "h-$head") {
-                    BasicText(
-                        head.uppercase(),
-                        Modifier.fillMaxWidth().background(K.base2).padding(top = 12.dp, bottom = 6.dp),
-                        style = T.micro(11.sp, K.inkSoft, ls = 0.1.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+                    // covers the list's side padding too, so no song peeks out beside the letter
+                    Column(Modifier.bleedX(20.dp)) {
+                        BasicText(
+                            head.uppercase(),
+                            Modifier.fillMaxWidth().background(K.base2).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
+                            style = T.micro(11.sp, K.inkSoft, ls = 0.1.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        Box(Modifier.fillMaxWidth().height(10.dp).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(K.base2, K.base2.copy(alpha = 0f)))))
+                    }
                 }
                 items(songs, key = { it.id }) { t ->
                     val current = t.id == engine.id
@@ -200,3 +205,10 @@ fun LibrarySheet(open: Boolean, onClose: () -> Unit) {
     }
 }
 
+
+/** Stretches a child [x] past both sides of the parent's horizontal padding. */
+private fun Modifier.bleedX(x: androidx.compose.ui.unit.Dp) = layout { m, c ->
+    val extra = x.roundToPx() * 2
+    val p = m.measure(c.copy(minWidth = c.maxWidth + extra, maxWidth = c.maxWidth + extra))
+    layout(c.maxWidth, p.height) { p.place(-extra / 2, 0) }
+}

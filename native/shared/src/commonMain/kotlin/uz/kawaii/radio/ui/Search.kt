@@ -1,5 +1,8 @@
 package uz.kawaii.radio.ui
 
+import uz.kawaii.radio.nowMs
+import uz.kawaii.radio.PlayStat
+import uz.kawaii.radio.data.Track
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.font.FontWeight
 import uz.kawaii.radio.ui.kit.LocalSound
@@ -47,7 +50,12 @@ import uz.kawaii.radio.ui.theme.lcdShadow
 
 private fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
 
-/** Search over the whole catalog, typed on a little LCD; artists and recent songs when empty. */
+/**
+ * Search over the whole catalog, typed on a little LCD. With nothing typed it is the discovery
+ * page: artists (with their stories, free for everybody), then for Kawaii Pass holders songs picked
+ * for the listener, what people listen to most this week, new songs, the whole catalogue, and at
+ * the end what was listened to recently.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun Search(active: Boolean) {
@@ -70,6 +78,15 @@ fun Search(active: Boolean) {
     }
     val byId = remember(tracks) { tracks.associateBy { it.id } }
     val recentTracks = recent.mapNotNull { byId[it] }.take(8)
+    val pass by store.pass.collectAsState()
+    val stats by store.stats.collectAsState()
+    val liked by store.liked.collectAsState()
+    val profile by store.profile.collectAsState()
+    val trending by store.trending.collectAsState()
+    LaunchedEffect(active) { if (active) store.refreshTrending() }
+    val forYou = remember(tracks, stats, liked, profile.favArtist) { recommend(tracks, stats, liked, profile.favArtist) }
+    val hot = remember(trending, byId) { trending.mapNotNull { (id, n) -> byId[id]?.let { it to n } }.take(10) }
+    val fresh = remember(tracks) { tracks.takeLast(12).reversed() }
 
     Column(Modifier.fillMaxSize()) {
         PageHeader("Qidiruv", "${tracks.size} ta qo'shiq efirda")
@@ -106,6 +123,37 @@ fun Search(active: Boolean) {
         ) {
             if (q.isEmpty()) {
                 item(key = "artists") { ArtistStrip() }
+                if (!pass) {
+                    item(key = "locked") {
+                        LockedPanel(
+                            "Siz uchun", "Tavsiyalar, hozir ko'p tinglanayotgan qo'shiqlar, yangi qo'shiqlar va tinglash tarixi obunachilar uchun.",
+                            Modifier.padding(top = 6.dp),
+                        )
+                    }
+                    return@LazyColumn
+                }
+                if (forYou.isNotEmpty()) {
+                    item(key = "foryou-label") { SectionLabel("Siz uchun") }
+                    item(key = "foryou") { CoverStrip(forYou) }
+                }
+                if (hot.isNotEmpty()) {
+                    item(key = "hot-label") { SectionLabel("Hozir ko'p tinglanmoqda") }
+                    items(hot, key = { "h-" + it.first.id }) { (t, n) ->
+                        val ids = hot.map { it.first.id }
+                        SongRow(
+                            t, t.id == engine.id, engine.playing, sub = "${hot.indexOfFirst { it.first.id == t.id } + 1}-O'RIN · $n KISHI TINGLADI",
+                            onClick = { if (t.id == engine.id) store.toggle() else store.play(t.id, ids) },
+                            onLongClick = { ui.song = t.id },
+                        )
+                    }
+                }
+                if (fresh.isNotEmpty()) {
+                    item(key = "fresh-label") { SectionLabel("Yangi qo'shilganlar") }
+                    item(key = "fresh") { CoverStrip(fresh) }
+                }
+                item(key = "all") {
+                    PixelKey("Barcha qo'shiqlar · ${tracks.size}", Modifier.padding(top = 6.dp).fillMaxWidth(), glyph = Glyph.LIST, height = 46.dp) { ui.library = true }
+                }
                 if (recentTracks.isNotEmpty()) {
                     item(key = "recent-label") { SectionLabel("Yaqinda tinglangan") }
                     items(recentTracks, key = { "r-" + it.id }) { t ->
@@ -171,4 +219,45 @@ private fun ArtistStrip() {
             }
         }
     }
+}
+
+/** Covers in a row (tap plays, the row becomes the queue). */
+@Composable
+private fun CoverStrip(list: List<Track>) {
+    val store = LocalStore.current
+    val sound = LocalSound.current
+    val ids = list.map { it.id }
+    androidx.compose.foundation.lazy.LazyRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(list, key = { it.id }) { t ->
+            Column(Modifier.width(96.dp).tap(onClick = { sound.press(); store.play(t.id, ids) })) {
+                Box(Modifier.tray(RoundedCornerShape(14.dp)).padding(4.dp)) { Cover(t.coverArt, 88.dp, 10.dp) }
+                BasicText(t.title, Modifier.padding(top = 6.dp), style = T.pixel(12.sp, K.ink), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                BasicText(mainArtist(t.artist), style = T.pixel(11.sp, K.inkSoft), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/**
+ * Songs for this listener: artists they like (liked songs, songs they chose to listen to, their
+ * favourite artist) weigh most, songs they already know are left out, and a daily seed mixes the
+ * rest so the row changes from day to day.
+ */
+private fun recommend(tracks: List<Track>, stats: Map<String, PlayStat>, liked: List<String>, fav: String?): List<Track> {
+    val byId = tracks.associateBy { it.id }
+    val taste = HashMap<String, Double>()
+    fun add(artist: String, w: Double) { taste[artist.lowercase()] = (taste[artist.lowercase()] ?: 0.0) + w }
+    liked.forEach { id -> byId[id]?.let { add(mainArtist(it.artist), 3.0) } }
+    stats.forEach { (id, st) -> byId[id]?.let { add(mainArtist(it.artist), st.seconds / 120.0) } }
+    fav?.let { add(it, 5.0) }
+    val known = liked.toSet() + stats.filter { it.value.total > 90 }.keys
+    val rnd = kotlin.random.Random(nowMs() / 86_400_000)
+    return tracks.filter { it.id !in known }
+        .map { it to (taste[mainArtist(it.artist).lowercase()] ?: 0.0).coerceAtMost(12.0) + rnd.nextDouble() * 2.5 }
+        .sortedByDescending { it.second }
+        .take(12)
+        .map { it.first }
 }

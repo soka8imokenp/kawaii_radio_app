@@ -85,6 +85,8 @@ class UiState {
     var artistPicker by mutableStateOf(false)
     var wrapped by mutableStateOf(false)
     var library by mutableStateOf(false)
+    /** Admin panel (chat admins only). */
+    var admin by mutableStateOf(false)
     /** "Hammasini ko'rish" list of artists, and the artist page on top of it. */
     var artists by mutableStateOf(false)
     var artist by mutableStateOf<String?>(null)
@@ -107,6 +109,7 @@ class UiState {
         if (artist != null) { artist = null; return true }
         if (artists) { artists = false; return true }
         if (library) { library = false; return true }
+        if (admin) { admin = false; return true }
         closeDrawer?.let { it(); return true }
         if (page != Page.Home) { page = Page.Home; return true }
         return false
@@ -192,6 +195,7 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
             }
 
             LibrarySheet(open = ui.library, onClose = { ui.library = false })
+            uz.kawaii.radio.ui.sheets.AdminSheet(open = ui.admin, onClose = { ui.admin = false })
             AllArtistsSheet(open = ui.artists, onClose = { ui.artists = false })
             ArtistSheet(id = ui.artist, onClose = { ui.artist = null })
             SongSheet(id = ui.song, onClose = { ui.song = null })

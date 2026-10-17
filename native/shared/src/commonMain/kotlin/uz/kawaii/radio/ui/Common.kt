@@ -263,3 +263,20 @@ fun CountPlate(n: Int, color: Color) {
         BasicText(n.toString().padStart(2, '0'), style = T.pixel(15.sp, K.ink, lh = 15.sp))
     }
 }
+
+/** Stand-in for a Kawaii Pass feature: what it would show, and the gold key that opens the offer. */
+@Composable
+fun LockedPanel(title: String, text: String, modifier: Modifier = Modifier) {
+    val ui = LocalUi.current
+    androidx.compose.foundation.layout.Column(
+        modifier.fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        BasicText("★ $title", style = T.pixel(14.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+        BasicText(
+            text, Modifier.padding(top = 4.dp, bottom = 12.dp),
+            style = T.pixel(12.sp, K.inkSoft, lh = 16.sp).copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+        )
+        GoldButton("KAWAII PASS", radius = 14, vertical = 10) { ui.premium = true }
+    }
+}

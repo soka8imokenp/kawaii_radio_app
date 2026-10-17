@@ -1,5 +1,8 @@
 package uz.kawaii.radio.chat
 
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -96,9 +99,53 @@ data class UserCard(
     val live: Boolean = false,
     val messages: Int = 0,
     val card: PublicCard? = null,
+    /** Can't write until then (epoch ms), 0 = free to talk. */
+    val mutedUntil: Long = 0,
 )
 
-data class Me(val uid: String, val admin: Boolean = false, val banned: Boolean = false)
+/** A listener in the admin panel's list. */
+@Serializable
+data class AdminUser(
+    val uid: String,
+    val name: String = "Mehmon",
+    val avatar: String = "p:0",
+    val admin: Boolean = false,
+    val banned: Boolean = false,
+    val mutedUntil: Long = 0,
+    val seen: Long = 0,
+    val joined: Long = 0,
+    val messages: Int = 0,
+    val online: Boolean = false,
+    val live: Boolean = false,
+)
+
+/** Numbers on the admin panel's LCD. */
+@Serializable
+data class RoomStats(
+    val online: Int = 0,
+    val live: Int = 0,
+    val users: Int = 0,
+    val banned: Int = 0,
+    val muted: Int = 0,
+    val messagesToday: Int = 0,
+    val messages: Int = 0,
+    val activeToday: Int = 0,
+)
+
+/** Chat settings every listener follows: slow mode, closed chat, the pinned message. */
+data class RoomState(val slow: Int = 0, val locked: Boolean = false, val pin: ChatMsg? = null)
+
+/** State of the profile photo's upload to the chat. */
+enum class AvatarSync { Idle, Uploading, Done, Failed }
+
+/** Admin key check: nothing asked yet, waiting for the server, or the key was wrong. */
+sealed interface AdminLogin {
+    data object Idle : AdminLogin
+    data object Checking : AdminLogin
+    data class Failed(val text: String) : AdminLogin
+}
+
+data class Me(val uid: String, val admin: Boolean = false, val banned: Boolean = false, val mutedUntil: Long = 0)
 
 private const val ID_KEY = "chat-id"
 private const val READ_KEY = "chat-read"
@@ -151,6 +198,23 @@ class ChatStore(
     private val _user = MutableStateFlow<UserCard?>(null)
     /** Profile page currently open (answer to [whois]). */
     val user: StateFlow<UserCard?> = _user.asStateFlow()
+
+    private val _room = MutableStateFlow(RoomState())
+    val room: StateFlow<RoomState> = _room.asStateFlow()
+
+    private val _adminLogin = MutableStateFlow<AdminLogin>(AdminLogin.Idle)
+    val adminLogin: StateFlow<AdminLogin> = _adminLogin.asStateFlow()
+
+    private val _users = MutableStateFlow<List<AdminUser>?>(null)
+    /** Admin panel: the listeners of the last [loadUsers], null while loading. */
+    val users: StateFlow<List<AdminUser>?> = _users.asStateFlow()
+
+    private val _stats = MutableStateFlow<RoomStats?>(null)
+    val stats: StateFlow<RoomStats?> = _stats.asStateFlow()
+
+    private val _avatarSync = MutableStateFlow(AvatarSync.Idle)
+    /** The gallery photo on its way to the chat server (shown in the avatar picker). */
+    val avatarSync: StateFlow<AvatarSync> = _avatarSync.asStateFlow()
 
     private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 4)
     /** Short messages from the server ("too fast", "blocked"…). */
@@ -340,6 +404,7 @@ class ChatStore(
                 _messages.update { old -> history + old.filter { it.pending } }
                 _hasMore.value = history.size >= HISTORY_PAGE
                 presence(o)
+                o["room"]?.jsonObject?.let(::applyRoom)
                 sendViewing()
                 resendPending()
             }
@@ -370,6 +435,17 @@ class ChatStore(
             }
             "user" -> _user.value = runCatching { json.decodeFromJsonElement(UserCard.serializer(), o) }.getOrNull()
             "error" -> o.str("text")?.let { _errors.tryEmit(it) }
+            "room" -> applyRoom(o)
+            "cleared" -> _messages.update { old -> old.filter { it.pending } }
+            "purged" -> {
+                val uid = o.str("uid") ?: return
+                _messages.update { old -> old.filterNot { it.uid == uid && !it.pending } }
+                _users.value?.let { l -> _users.value = l.map { if (it.uid == uid) it.copy(messages = 0) else it } }
+            }
+            "admin" -> _adminLogin.value =
+                if (o["ok"]?.jsonPrimitive?.booleanOrNull == true) AdminLogin.Idle else AdminLogin.Failed(o.str("text") ?: "Kalit noto'g'ri")
+            "users" -> _users.value = o["users"]?.jsonArray?.mapNotNull { runCatching { json.decodeFromJsonElement(AdminUser.serializer(), it) }.getOrNull() }.orEmpty()
+            "stats" -> _stats.value = runCatching { json.decodeFromJsonElement(RoomStats.serializer(), o) }.getOrNull()
         }
     }
 
@@ -378,6 +454,17 @@ class ChatStore(
             uid = o.str("uid") ?: identity.uid,
             admin = o["admin"]?.jsonPrimitive?.booleanOrNull == true,
             banned = o["banned"]?.jsonPrimitive?.booleanOrNull == true,
+            mutedUntil = o["mutedUntil"]?.jsonPrimitive?.longOrNull ?: 0,
+        )
+        // an admin action changed somebody's rights: refresh the open admin list
+        if (_me.value.admin && _users.value != null) loadUsers(lastFilter)
+    }
+
+    private fun applyRoom(o: JsonObject) {
+        _room.value = RoomState(
+            slow = o["slow"]?.jsonPrimitive?.intOrNull ?: 0,
+            locked = o["locked"]?.jsonPrimitive?.booleanOrNull == true,
+            pin = o["pin"]?.takeIf { it is JsonObject }?.let { runCatching { json.decodeFromJsonElement(ChatMsg.serializer(), it) }.getOrNull() },
         )
     }
 
@@ -429,10 +516,67 @@ class ChatStore(
         send(buildJsonObject { put("type", "delete"); put("id", m.id) })
     }
 
-    fun ban(uid: String, on: Boolean) {
-        send(buildJsonObject { put("type", "ban"); put("uid", uid); put("on", on) })
-        if (on) _errors.tryEmit("Foydalanuvchi bloklandi")
+    fun ban(uid: String, on: Boolean, purge: Boolean = false) {
+        send(buildJsonObject { put("type", "ban"); put("uid", uid); put("on", on); put("purge", purge) })
+        refreshAdmin()
     }
+
+    /* ---------- admin ---------- */
+
+    /** Checks a personal admin key; [me] turns admin on success, [adminLogin] says why not otherwise. */
+    fun adminLogin(key: String) {
+        val k = key.trim()
+        if (k.isEmpty()) return
+        if (!_connected.value) { _adminLogin.value = AdminLogin.Failed("Chatga ulanib bo'lmadi, internetni tekshiring"); return }
+        _adminLogin.value = AdminLogin.Checking
+        send(buildJsonObject { put("type", "admin"); put("code", k) })
+    }
+
+    fun adminLogout() = send(buildJsonObject { put("type", "unadmin") }).let { }
+
+    /** [minutes] = 0 lets the listener write again. */
+    fun mute(uid: String, minutes: Int) {
+        send(buildJsonObject { put("type", "mute"); put("uid", uid); put("minutes", minutes) })
+        refreshAdmin()
+    }
+
+    fun purge(uid: String) = send(buildJsonObject { put("type", "purge"); put("uid", uid) }).let { refreshAdmin() }
+    fun clearChat() = send(buildJsonObject { put("type", "clear") }).let { refreshAdmin() }
+    fun setSlow(seconds: Int) = send(buildJsonObject { put("type", "room"); put("slow", seconds) }).let { }
+    fun setLocked(on: Boolean) = send(buildJsonObject { put("type", "room"); put("locked", on) }).let { }
+    fun pin(m: ChatMsg?) = send(buildJsonObject { put("type", "pin"); if (m != null) put("id", m.id) else put("id", JsonNull) }).let { }
+
+    private var lastFilter = ""
+    /** Admin panel list: "online", "banned", "muted" or "" for everybody. */
+    fun loadUsers(filter: String = lastFilter) {
+        lastFilter = filter
+        send(buildJsonObject { put("type", "users"); put("filter", filter) })
+    }
+    fun loadStats() = send(buildJsonObject { put("type", "stats") }).let { }
+    private fun refreshAdmin() {
+        if (!_me.value.admin) return
+        scope.launch { delay(400); loadStats(); if (_users.value != null) loadUsers(lastFilter) }
+    }
+
+    /* ---------- what is listened to ---------- */
+
+    /** A song was listened to for 30 s: counted (once per listener and day) for "Hozir ko'p tinglanmoqda". */
+    fun reportPlay(trackId: String) {
+        scope.launch {
+            runCatching {
+                p.httpPostJson("$CLOUD_URL/chat/play", buildJsonObject { put("uid", identity.uid); put("key", identity.key); put("id", trackId) }.toString())
+            }
+        }
+    }
+
+    /** Most listened songs of the last week (song id → listeners), or null when the cloud can't be reached. */
+    suspend fun trending(): List<Pair<String, Int>>? = runCatching {
+        json.parseToJsonElement(p.httpGetText("$CLOUD_URL/chat/trending")).jsonObject["tracks"]!!.jsonArray.mapNotNull { e ->
+            val o = e.jsonObject
+            val id = o.str("id") ?: return@mapNotNull null
+            id to (o["n"]?.jsonPrimitive?.intOrNull ?: 0)
+        }
+    }.getOrNull()
 
     /** Opens somebody's profile page; the answer arrives in [user]. */
     fun whois(uid: String) {
@@ -455,18 +599,35 @@ class ChatStore(
     private fun shareableAvatar(pr: Profile) =
         if (pr.avatar.startsWith("p:")) pr.avatar else p.kv.get(AVATAR_KEY) ?: "p:0"
 
+    /**
+     * A photo was just picked (or a pixel avatar chosen): upload it now, not after the usual
+     * debounce, and tell the room, so the picker can show that it worked.
+     */
+    fun avatarChanged(pr: Profile) {
+        if (pr.avatar != "photo") { _avatarSync.value = AvatarSync.Idle; return }
+        scope.launch {
+            syncAvatar(pr)
+            if (_avatarSync.value == AvatarSync.Done) send(buildJsonObject { put("type", "profile"); put("name", displayName(pr)); put("avatar", shareableAvatar(pr)) })
+        }
+    }
+
     /** Uploads the profile photo when it is new, so other listeners see it in the chat. */
     private suspend fun syncAvatar(pr: Profile) {
         if (pr.avatar != "photo") return
         val src = p.avatarPhoto() ?: return
-        if (src == p.kv.get(AVATAR_SRC_KEY) && p.kv.get(AVATAR_KEY) != null) return
-        val bytes = p.avatarJpeg() ?: return
+        if (src == p.kv.get(AVATAR_SRC_KEY) && p.kv.get(AVATAR_KEY) != null) { _avatarSync.value = AvatarSync.Done; return }
+        _avatarSync.value = AvatarSync.Uploading
+        // the chat identity must exist on the server before it accepts a photo
+        if (!_connected.value) withTimeoutOrNull(8_000) { connected.first { it } }
+        val bytes = p.avatarJpeg() ?: run { _avatarSync.value = AvatarSync.Failed; return }
         val text = runCatching {
             p.httpPostBytes("$CLOUD_URL/chat/avatar", bytes, mapOf("X-Chat-Uid" to identity.uid, "X-Chat-Key" to identity.key))
-        }.getOrNull() ?: return
-        val avatar = runCatching { json.parseToJsonElement(text).jsonObject.str("avatar") }.getOrNull() ?: return
+        }.getOrNull()
+        val avatar = text?.let { runCatching { json.parseToJsonElement(it).jsonObject.str("avatar") }.getOrNull() }
+        if (avatar == null) { _avatarSync.value = AvatarSync.Failed; return }
         p.kv.set(AVATAR_KEY, avatar)
         p.kv.set(AVATAR_SRC_KEY, src)
+        _avatarSync.value = AvatarSync.Done
     }
 }
 

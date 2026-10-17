@@ -54,9 +54,15 @@ data class Slot(val id: String, val start: Long, val duration: Long)
 private data class RadioSchedule(val serverTime: Long, val slots: List<Slot> = emptyList(), val station: String? = null)
 enum class ThemeMode { AUTO, LIGHT, DARK }
 
-/** Listening history of one song. */
+/**
+ * Listening history of one song. [seconds] = listened by choice (O'Z TANLOVIM), [radio] = heard on
+ * the broadcast. Rankings ("most listened", top artists) use only the songs picked by choice, so the
+ * broadcast doesn't decide anybody's taste; total listening time counts both.
+ */
 @Serializable
-data class PlayStat(val plays: Int = 0, val seconds: Long = 0, val last: Long = 0)
+data class PlayStat(val plays: Int = 0, val seconds: Long = 0, val last: Long = 0, val radio: Long = 0) {
+    val total: Long get() = seconds + radio
+}
 
 @Serializable
 data class Profile(
@@ -87,6 +93,8 @@ private data class Saved(
 
 private const val STATE_KEY = "kr01-state"
 private const val PREMIUM_KEY = "kr01-premium"
+/** Beta: Kawaii Pass is on for everybody until the real subscription exists. Set to false to lock it again. */
+const val BETA = true
 /** A song counts as "played" after this much listening. */
 private const val PLAY_SECONDS = 30
 
@@ -172,12 +180,12 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
     private val _sleepAt = MutableStateFlow<Long?>(null)
     val sleepAt: StateFlow<Long?> = _sleepAt.asStateFlow()
 
-    private val _pass = MutableStateFlow(kv.get(PREMIUM_KEY) == "1")
+    private val _pass = MutableStateFlow(BETA || kv.get(PREMIUM_KEY) == "1")
     /** Kawaii Pass subscription (temporary local flag until the kawaii.uz backend exists). */
     val pass: StateFlow<Boolean> = _pass.asStateFlow()
     val premium: Boolean get() = _pass.value
 
-    private val _mode = MutableStateFlow(if (saved0.mode == "pick" && kv.get(PREMIUM_KEY) == "1") Mode.PICK else Mode.LIVE)
+    private val _mode = MutableStateFlow(if (saved0.mode == "pick" && _pass.value) Mode.PICK else Mode.LIVE)
     /** Listening mode; without Kawaii Pass it is always the live broadcast. */
     val mode: StateFlow<Mode> = _mode.asStateFlow()
     val live: Boolean get() = _mode.value == Mode.LIVE
@@ -335,6 +343,18 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
         }
     }
 
+    private val _trending = MutableStateFlow<List<Pair<String, Int>>>(emptyList())
+    /** "Hozir ko'p tinglanmoqda": songs most people listened to this week (song id → listeners). */
+    val trending: StateFlow<List<Pair<String, Int>>> = _trending.asStateFlow()
+    private var trendingAt = 0L
+
+    /** Fetches [trending] again, at most every 5 minutes. */
+    fun refreshTrending() {
+        if (nowMs() - trendingAt < 5 * 60_000) return
+        trendingAt = nowMs()
+        scope.launch { chat.trending()?.let { _trending.value = it } ?: run { trendingAt = 0L } }
+    }
+
     /** Temporary: "Obuna bo'lish" simply turns Kawaii Pass on, on this phone. */
     fun activatePass() {
         kv.set(PREMIUM_KEY, "1")
@@ -358,7 +378,7 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
                 .entries.sortedByDescending { it.value }.take(3).map { it.key }
             PublicCard(
                 fav = pr.favArtist, likes = liked.size,
-                plays = stats.values.sumOf { it.plays }, minutes = (stats.values.sumOf { it.seconds } / 60).toInt(),
+                plays = stats.values.sumOf { it.plays }, minutes = (stats.values.sumOf { it.total } / 60).toInt(),
                 top = top, now = if (e.playing) e.id else null,
             )
         }.stateIn(scope, SharingStarted.Eagerly, PublicCard())
@@ -629,10 +649,18 @@ class RadioStore(val platform: Platform, private val scope: CoroutineScope) {
             sessionSeconds++
             val old = _stats.value[e.id] ?: PlayStat()
             val counted = if (sessionSeconds == PLAY_SECONDS) 1 else 0
-            _stats.value = _stats.value + (e.id to old.copy(plays = old.plays + counted, seconds = old.seconds + 1, last = nowMs()))
-            val mk = monthKey(nowMs())
-            val month = _months.value[mk].orEmpty()
-            _months.value = _months.value + (mk to (month + (e.id to (month[e.id] ?: 0L) + 1)))
+            val onAir = live
+            _stats.value = _stats.value + (e.id to old.copy(
+                plays = old.plays + counted, last = nowMs(),
+                seconds = old.seconds + if (onAir) 0 else 1, radio = old.radio + if (onAir) 1 else 0,
+            ))
+            // the month's top list (Wrapped) is about songs listened to by choice
+            if (!onAir) {
+                val mk = monthKey(nowMs())
+                val month = _months.value[mk].orEmpty()
+                _months.value = _months.value + (mk to (month + (e.id to (month[e.id] ?: 0L) + 1)))
+            }
+            if (counted == 1) chat.reportPlay(e.id)
             if (++sinceSave >= 15 || counted == 1) { sinceSave = 0; persist() }
         }
     }

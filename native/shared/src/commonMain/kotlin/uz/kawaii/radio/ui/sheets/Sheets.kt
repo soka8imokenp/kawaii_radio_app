@@ -139,7 +139,7 @@ fun SongSheet(id: String?, onClose: () -> Unit) {
             ) {
                 LcdLine("SEVIMLIGA QO'SHILGAN", likes[t.id]?.let(::formatWhen) ?: "—")
                 LcdLine("TINGLANGAN", if ((st?.plays ?: 0) > 0) "${st!!.plays} marta" else "hali yo'q")
-                LcdLine("JAMI VAQT", formatListening(st?.seconds ?: 0))
+                LcdLine("JAMI VAQT", formatListening(st?.total ?: 0))
                 LcdLine("OXIRGI MARTA", st?.last?.takeIf { it > 0 }?.let(::formatWhen) ?: "—")
                 LcdLine("DAVOMIYLIGI", if (t.duration > 0) formatDuration(t.duration) else "—")
             }
@@ -311,7 +311,7 @@ fun AvatarSheet(open: Boolean, onClose: () -> Unit) {
             if (photo != null) {
                 Box(
                     Modifier.size(56.dp).raised(CircleShape, profile.avatar == "photo")
-                        .tap(onClick = { sound.press(); store.updateProfile { it.copy(avatar = "photo") } }).padding(4.dp),
+                        .tap(onClick = { sound.press(); store.updateProfile { it.copy(avatar = "photo") }; store.chat.avatarChanged(store.profile.value) }).padding(4.dp),
                 ) { AvatarView("photo", photo, 48.dp) }
             }
             PixelKey("Galereyadan", Modifier.weight(1f), height = 46.dp) {
@@ -319,7 +319,28 @@ fun AvatarSheet(open: Boolean, onClose: () -> Unit) {
                     val p = store.platform.pickAvatarPhoto() ?: return@launch
                     photo = p
                     store.updateProfile { it.copy(avatar = "photo") }
+                    store.chat.avatarChanged(store.profile.value)
                 }
+            }
+        }
+        // what happened to the choice: a photo has to reach the chat server first
+        val sync by store.chat.avatarSync.collectAsState()
+        val (note, color) = when {
+            profile.avatar != "photo" -> "✓ Avatar tanlandi" to K.ledGreen
+            sync == uz.kawaii.radio.chat.AvatarSync.Uploading -> "Rasm yuklanmoqda…" to K.inkSoft
+            sync == uz.kawaii.radio.chat.AvatarSync.Failed -> "✕ Rasm yuklanmadi. Internetni tekshirib, qayta tanlang" to K.onAir
+            else -> "✓ Rasm o'rnatildi: chatda hamma ko'radi" to K.ledGreen
+        }
+        Row(
+            Modifier.padding(top = 12.dp).fillMaxWidth().tray(RoundedCornerShape(14.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicText(note, Modifier.weight(1f), style = T.pixel(13.sp, color, lh = 16.sp))
+            if (sync == uz.kawaii.radio.chat.AvatarSync.Failed && profile.avatar == "photo") {
+                BasicText(
+                    "QAYTA", Modifier.raised(RoundedCornerShape(10.dp)).tap(onClick = { sound.press(); store.chat.avatarChanged(profile) }).padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = T.micro(11.sp),
+                )
             }
         }
     }

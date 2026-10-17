@@ -104,7 +104,7 @@ fun Profile(ui: UiState) {
     val byId = remember(tracks) { tracks.associateBy { it.id } }
     val ls = lcdShadow()
 
-    val listened = stats.values.sumOf { it.seconds }
+    val listened = stats.values.sumOf { it.total }
     val plays = stats.values.sumOf { it.plays }
     val top = stats.entries.filter { byId[it.key] != null && it.value.seconds > 0 }.sortedByDescending { it.value.seconds }.take(5)
     val topArtist = stats.entries.mapNotNull { e -> byId[e.key]?.let { mainArtist(it.artist) to e.value.seconds } }
@@ -176,9 +176,10 @@ fun Profile(ui: UiState) {
             }
         }
 
-        // ── listening stats
+        // ── listening stats (Kawaii Pass)
         SectionLabel("Statistika")
-        Box(Modifier.fillMaxWidth().tray(RoundedCornerShape(20.dp)).padding(5.dp)) {
+        if (!pass) LockedPanel("Statistika", "Tinglagan vaqtingiz, eng ko'p tinglaganlaringiz va oylik Wrapped obunachilar uchun.")
+        else Box(Modifier.fillMaxWidth().tray(RoundedCornerShape(20.dp)).padding(5.dp)) {
             Column(
                 Modifier.fillMaxWidth().lcd(RoundedCornerShape(14.dp)).border(3.dp, K.lcdBorder, RoundedCornerShape(14.dp))
                     .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -202,10 +203,9 @@ fun Profile(ui: UiState) {
                 }
             }
         }
-        PixelKey("Kawaii Wrapped · oy xulosasi", Modifier.padding(top = 12.dp).fillMaxWidth(), glyph = Glyph.STAR, glyphSize = 15.dp, height = 46.dp) { ui.wrapped = true }
-        if (!pass) GoldButton("KAWAII PASS OLISH", Modifier.padding(top = 12.dp), 16, 14) { ui.premium = true }
+        if (pass) PixelKey("Kawaii Wrapped · oy xulosasi", Modifier.padding(top = 12.dp).fillMaxWidth(), glyph = Glyph.STAR, glyphSize = 15.dp, height = 46.dp) { ui.wrapped = true }
 
-        if (top.isNotEmpty()) {
+        if (pass && top.isNotEmpty()) {
             SectionLabel("Eng ko'p tinglangan")
             Column(Modifier.fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
                 top.forEachIndexed { i, (id, st) ->
@@ -229,7 +229,7 @@ fun Profile(ui: UiState) {
         }
 
         val recentTracks = recent.mapNotNull { byId[it] }.take(12)
-        if (recentTracks.isNotEmpty()) {
+        if (pass && recentTracks.isNotEmpty()) {
             SectionLabel("Yaqinda tinglangan")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 for (t in recentTracks) {
@@ -278,8 +278,11 @@ fun Profile(ui: UiState) {
 
         SectionLabel("Akkaunt")
         Column(Modifier.fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(horizontal = 16.dp)) {
-            SettingRow("Kawaii.uz akkaunti", "kawaii.uz saytidagi akkauntingizga kiring") {
-                SmallKey(onClick = { store.platform.openUrl("https://kawaii.uz/login") }) { BasicText("KIRISH", style = T.micro(11.sp)) }
+            SettingRow("Kawaii.uz akkaunti", "Kawaii.uz akkauntingiz bilan kirish tez orada qo'shiladi") {
+                BasicText(
+                    "TEZ ORADA", Modifier.tray(RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+                    style = T.micro(11.sp, K.inkSoft),
+                )
             }
             GrooveH()
             SettingRow("Ilova haqida", "Kawaii Radio KR-01") {
@@ -303,6 +306,8 @@ fun Profile(ui: UiState) {
                     BasicText(if (check == Check.Checking) "KUTING" else "TEKSHIRISH", style = T.micro(11.sp))
                 }
             }
+            GrooveH()
+            AdminEntry(ui)
         }
     }
 }
@@ -328,7 +333,7 @@ private fun SettingRow(title: String, sub: String?, trailing: @Composable () -> 
 }
 
 @Composable
-private fun SmallKey(onClick: () -> Unit, sound: Boolean = true, content: @Composable () -> Unit) {
+fun SmallKey(onClick: () -> Unit, sound: Boolean = true, content: @Composable () -> Unit) {
     val m = Modifier.raised(RoundedCornerShape(12.dp))
     Row(
         (if (sound) m.pressClick(onClick = onClick) else m.tap(onClick = onClick)).padding(horizontal = 14.dp, vertical = 9.dp),
@@ -339,7 +344,7 @@ private fun SmallKey(onClick: () -> Unit, sound: Boolean = true, content: @Compo
 
 /** Multi-position hardware slide switch. */
 @Composable
-private fun Switch3(selected: Int, labels: List<String>, onChange: (Int) -> Unit) {
+fun Switch3(selected: Int, labels: List<String>, onChange: (Int) -> Unit) {
     val sound = LocalSound.current
     val pos by animateFloatAsState(selected.toFloat(), motionSpring(600f, 34f))
     BoxWithConstraints(Modifier.width((labels.size * if (labels.size > 3) 46 else 52).dp).tray(RoundedCornerShape(14.dp)).padding(4.dp)) {
@@ -374,4 +379,57 @@ fun GoldButton(text: String, modifier: Modifier = Modifier, radius: Int = 18, ve
             .padding(vertical = vertical.dp),
         contentAlignment = Alignment.Center,
     ) { BasicText(text, style = T.pixel(15.sp, Color(0xFF3A2A05), weight = FontWeight.SemiBold, ls = 0.08.em)) }
+}
+
+/**
+ * Admin access: a personal admin key typed once on an LCD strip. Admins get the key to the
+ * admin panel instead (and a way to give the rights back).
+ */
+@Composable
+private fun AdminEntry(ui: UiState) {
+    val store = LocalStore.current
+    val chat = store.chat
+    val sound = LocalSound.current
+    val focus = LocalFocusManager.current
+    val me by chat.me.collectAsState()
+    val login by chat.adminLogin.collectAsState()
+    var open by remember { mutableStateOf(false) }
+    var key by remember { mutableStateOf("") }
+    if (me.admin) {
+        SettingRow("Admin", "Chatni boshqarish: tozalash, bloklash, sekin rejim") {
+            SmallKey(onClick = { ui.admin = true }) {
+                Px(Glyph.STAR, 12.dp, K.gold)
+                BasicText("PANEL", style = T.micro(11.sp))
+            }
+        }
+        return
+    }
+    SettingRow("Admin kirish", if (open) "Sizga berilgan shaxsiy kalitni kiriting" else "Faqat adminlar uchun") {
+        SmallKey(onClick = { open = !open }) { BasicText(if (open) "YOPISH" else "KALIT", style = T.micro(11.sp)) }
+    }
+    if (!open) return
+    Row(Modifier.padding(bottom = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            Modifier.weight(1f).lcd(RoundedCornerShape(12.dp)).border(2.dp, K.lcdBorder, RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            if (key.isEmpty()) BasicText("KR-XXXXXX-…", style = T.pixel(15.sp, K.lcdInk.copy(alpha = 0.4f), lh = 18.sp))
+            BasicTextField(
+                key, { if (it.length <= 40) key = it.uppercase() },
+                Modifier.fillMaxWidth(),
+                singleLine = true,
+                textStyle = T.pixel(15.sp, K.lcdInk, lh = 18.sp).copy(shadow = lcdShadow()),
+                cursorBrush = SolidColor(K.lcdInk),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters),
+                keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); chat.adminLogin(key) }),
+            )
+        }
+        SmallKey(onClick = { focus.clearFocus(); chat.adminLogin(key) }) {
+            BasicText(if (login == uz.kawaii.radio.chat.AdminLogin.Checking) "…" else "KIRISH", style = T.micro(11.sp))
+        }
+    }
+    (login as? uz.kawaii.radio.chat.AdminLogin.Failed)?.let {
+        BasicText("✕ ${it.text}", Modifier.padding(bottom = 12.dp), style = T.pixel(12.sp, K.onAir))
+    }
+    LaunchedEffect(me.admin) { if (me.admin) { sound.press(); key = ""; open = false } }
 }

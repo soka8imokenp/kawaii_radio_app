@@ -11,27 +11,56 @@ import type { Env } from './index';
  *   history  { before }                          older messages, newest first
  *   delete   { id }                              own message, or any message for admins
  *   ban      { uid, on }                         admins only
- *   admin    { code }                            turns this user into an admin (code = ADMIN_CODE secret)
+ *   admin    { code }                            turns this user into an admin (a personal admin key, or the ADMIN_CODE secret)
+ *   unadmin  {}                                  gives the admin rights back
+ * Admins only:
+ *   ban      { uid, on, purge? }                 block / unblock; purge also removes all their messages
+ *   mute     { uid, minutes }                    no writing for a while (0 = speak again)
+ *   purge    { uid }                             removes every message of a listener
+ *   clear    {}                                  empties the whole chat
+ *   room     { slow?, locked? }                  slow mode (seconds between messages) / only admins may write
+ *   pin      { id | null }                       pins a message on top of the chat (null unpins)
+ *   users    { filter? }                         listener list for the admin panel ('online' | 'banned' | 'muted' | all)
+ *   stats    {}                                  numbers for the admin panel
  *   profile  { name, avatar, card }              card = public profile (favourite artist, stats, song on now)
  *   whois    { uid }                             asks for somebody's profile page
  *   react    { id, emoji }                       toggles a reaction (❤️ 🔥 😂 😭), one per person per message
  *   typing   {}                                  the listener is typing (sent every few seconds while typing)
  *   presence { live, viewing }                   listening to LIVE / looking at the chat right now (no push then)
  * HTTP POST /chat/push { uid, key, token, on }   the phone's FCM token for chat notifications
+ * HTTP POST /chat/play { uid, key, id }          a song was listened to (≥ 30 s); feeds "Hozir ko'p tinglanmoqda"
+ * HTTP GET  /chat/trending                       { tracks: [{ id, n }] }: most listened songs of the last 7 days (n = listeners)
  * Server → client:
- *   welcome  { you, history, online, live }      history is newest last
+ *   welcome  { you, history, online, live, room } history is newest last
+ *   room     { slow, locked, pin }               chat settings changed (pin = pinned message or null)
+ *   cleared  {}                                  the whole chat was emptied
+ *   purged   { uid }                             every message of this listener was removed
+ *   admin    { ok, text? }                       answer to an admin login
+ *   users    { users }                           answer to `users`
+ *   stats    { … }                               answer to `stats`
  *   msg      { m, nonce? }
  *   deleted  { id }
  *   history  { msgs }                            newest last
  *   presence { online, live }
- *   you      { uid, admin, banned }
+ *   you      { uid, admin, banned, mutedUntil }
  *   user     { uid, name, avatar, admin, joined, seen, online, live, messages, card }
  *   reactions { id, reactions }                  reactions = { emoji: [uid…] }
  *   typing   { uid, name }
  *   error    { text }
  */
 
-interface Attachment { uid?: string; admin?: boolean; banned?: boolean; live?: boolean; viewing?: boolean; name?: string; avatar?: string; sent?: number[]; typingAt?: number }
+interface Attachment { uid?: string; admin?: boolean; banned?: boolean; live?: boolean; viewing?: boolean; name?: string; avatar?: string; sent?: number[]; typingAt?: number; mutedUntil?: number }
+
+/**
+ * Personal admin keys, stored as SHA-256 only (the keys themselves are never in the code): one per
+ * admin, so a key can be replaced without touching the other. Typed in the app: Profil → Admin.
+ */
+const ADMIN_KEYS: Record<string, string> = {
+  '6c01da4f33f9935d8c31e555597b950e0fc0068b16bb8d164638abec2d01e4b9': 'soka',
+  'cc8ce06ba7233a632af4023008b7c555391378898a6114bb764601ff09c0e843': 'dost',
+};
+
+interface Room { slow: number; locked: boolean; pin: Msg | null }
 
 const EMOJI = ['❤️', '🔥', '😂', '😭'];
 
@@ -90,9 +119,10 @@ export class ChatRoom extends DurableObject<Env> {
         admin INTEGER DEFAULT 0, banned INTEGER DEFAULT 0, seen INTEGER);
       CREATE TABLE IF NOT EXISTS push (uid TEXT PRIMARY KEY, token TEXT, enabled INTEGER DEFAULT 1);
       CREATE TABLE IF NOT EXISTS reactions (mid INTEGER, uid TEXT, emoji TEXT, PRIMARY KEY (mid, uid));
+      CREATE TABLE IF NOT EXISTS plays (day INTEGER, tid TEXT, uid TEXT, PRIMARY KEY (day, tid, uid));
     `);
     // columns added later: ignore "duplicate column" on rooms that already have them
-    for (const col of ['card TEXT', 'created INTEGER']) {
+    for (const col of ['card TEXT', 'created INTEGER', 'muted INTEGER DEFAULT 0']) {
       try { this.sql.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch { /* already there */ }
     }
   }
@@ -100,6 +130,8 @@ export class ChatRoom extends DurableObject<Env> {
   async fetch(req: Request): Promise<Response> {
     if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/push')) return this.registerPush(req);
     if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/avatar')) return this.uploadAvatar(req);
+    if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/play')) return this.recordPlay(req);
+    if (req.method === 'GET' && new URL(req.url).pathname.endsWith('/trending')) return this.trending();
     if (req.method === 'GET' && new URL(req.url).pathname.endsWith('/status')) {
       // diagnostics (the Worker only lets this through with the upload token)
       const tokens = this.sql.exec('SELECT COUNT(*) AS n FROM push').one().n;
@@ -123,6 +155,27 @@ export class ChatRoom extends DurableObject<Env> {
   private setAtt(ws: WebSocket, a: Attachment) { ws.serializeAttachment(a); }
   private send(ws: WebSocket, data: unknown) { try { ws.send(JSON.stringify(data)); } catch { /* closed */ } }
   private broadcast(data: unknown) { const s = JSON.stringify(data); for (const ws of this.ctx.getWebSockets()) { try { ws.send(s); } catch { /* closed */ } } }
+
+  private async room(): Promise<Room> {
+    return ((await this.ctx.storage.get('room')) as Room | undefined) ?? { slow: 0, locked: false, pin: null };
+  }
+
+  private async setRoom(change: Partial<Room>) {
+    const r = { ...(await this.room()), ...change };
+    await this.ctx.storage.put('room', r);
+    this.broadcast({ type: 'room', ...r });
+  }
+
+  /** Tells every open socket of [uid] about its new rights (admin / banned / muted). */
+  private updateUser(uid: string, change: Partial<Attachment>) {
+    for (const other of this.ctx.getWebSockets()) {
+      const oa = this.att(other);
+      if (oa.uid !== uid) continue;
+      const na = { ...oa, ...change };
+      this.setAtt(other, na);
+      this.send(other, { type: 'you', uid, admin: !!na.admin, banned: !!na.banned, mutedUntil: na.mutedUntil ?? 0 });
+    }
+  }
 
   private presence() {
     const people = new Map<string, boolean>();
@@ -207,9 +260,10 @@ export class ChatRoom extends DurableObject<Env> {
       else this.sql.exec('UPDATE users SET name = ?, avatar = ?, seen = ?, card = COALESCE(?, card), created = COALESCE(created, ?) WHERE uid = ?', name, avatar, Date.now(), card, Date.now(), uid);
       const admin = !!user?.admin;
       const banned = !!user?.banned;
-      this.setAtt(ws, { uid, admin, banned, live: !!m.live, name, avatar, sent: [] });
+      const mutedUntil = Number(user?.muted ?? 0) > Date.now() ? Number(user?.muted) : 0;
+      this.setAtt(ws, { uid, admin, banned, mutedUntil, live: !!m.live, name, avatar, sent: [] });
       const p = this.presence();
-      this.send(ws, { type: 'welcome', you: { uid, admin, banned }, history: this.recent(), online: p.online, live: p.live });
+      this.send(ws, { type: 'welcome', you: { uid, admin, banned, mutedUntil }, history: this.recent(), online: p.online, live: p.live, room: await this.room() });
       this.broadcast(this.presence());
       return;
     }
@@ -222,8 +276,15 @@ export class ChatRoom extends DurableObject<Env> {
         const body = clean(m.body, kind === 'text' ? MAX_TEXT : 200);
         if (!body) return;
         const now = Date.now();
-        const sent = (a.sent ?? []).filter((t) => now - t < RATE_WINDOW);
-        if (sent.length >= RATE_COUNT) return this.send(ws, { type: 'error', text: 'Juda tez! Biroz kuting' });
+        if (!a.admin) {
+          if ((a.mutedUntil ?? 0) > now) return this.send(ws, { type: 'error', text: `Siz ${Math.ceil(((a.mutedUntil ?? 0) - now) / 60_000)} daqiqa yoza olmaysiz` });
+          const room = await this.room();
+          if (room.locked) return this.send(ws, { type: 'error', text: 'Chat vaqtincha yopiq' });
+          const last = (a.sent ?? []).at(-1) ?? 0;
+          if (room.slow > 0 && now - last < room.slow * 1000) return this.send(ws, { type: 'error', text: `Sekin rejim: ${Math.ceil((room.slow * 1000 - (now - last)) / 1000)} soniya kuting` });
+        }
+        const sent = (a.sent ?? []).filter((t) => now - t < Math.max(RATE_WINDOW, 120_000));
+        if (sent.filter((t) => now - t < RATE_WINDOW).length >= RATE_COUNT) return this.send(ws, { type: 'error', text: 'Juda tez! Biroz kuting' });
         sent.push(now);
         this.setAtt(ws, { ...a, sent });
 
@@ -270,24 +331,102 @@ export class ChatRoom extends DurableObject<Env> {
         const r = this.sql.exec('SELECT uid FROM messages WHERE id = ?', m.id).toArray()[0];
         if (!r || (r.uid !== a.uid && !a.admin)) return;
         this.sql.exec('UPDATE messages SET deleted = 1 WHERE id = ?', m.id);
+        if ((await this.room()).pin?.id === m.id) await this.setRoom({ pin: null });
         return this.broadcast({ type: 'deleted', id: m.id });
       }
       case 'ban': {
         if (!a.admin) return;
         const uid = clean(m.uid, 64);
         const on = !!m.on;
+        if (uid === a.uid) return this.send(ws, { type: 'error', text: "O'zingizni bloklab bo'lmaydi" });
         this.sql.exec('UPDATE users SET banned = ? WHERE uid = ?', on ? 1 : 0, uid);
+        this.updateUser(uid, { banned: on });
+        if (on && m.purge) this.purge(uid);
+        return this.send(ws, { type: 'error', text: on ? 'Foydalanuvchi bloklandi' : 'Blokdan chiqarildi' });
+      }
+      case 'mute': {
+        if (!a.admin) return;
+        const uid = clean(m.uid, 64);
+        const minutes = typeof m.minutes === 'number' ? Math.max(0, Math.min(m.minutes, 7 * 24 * 60)) : 0;
+        const until = minutes > 0 ? Date.now() + minutes * 60_000 : 0;
+        this.sql.exec('UPDATE users SET muted = ? WHERE uid = ?', until, uid);
+        this.updateUser(uid, { mutedUntil: until });
+        return this.send(ws, { type: 'error', text: until ? `${minutes} daqiqaga ovozsiz qilindi` : 'Yana yoza oladi' });
+      }
+      case 'purge': {
+        if (!a.admin) return;
+        this.purge(clean(m.uid, 64));
+        return this.send(ws, { type: 'error', text: "Xabarlari o'chirildi" });
+      }
+      case 'clear': {
+        if (!a.admin) return;
+        this.sql.exec('UPDATE messages SET deleted = 1 WHERE deleted = 0');
+        this.sql.exec('DELETE FROM reactions');
+        await this.setRoom({ pin: null });
+        return this.broadcast({ type: 'cleared' });
+      }
+      case 'room': {
+        if (!a.admin) return;
+        const change: Partial<Room> = {};
+        if (typeof m.slow === 'number') change.slow = Math.max(0, Math.min(Math.round(m.slow), 600));
+        if (typeof m.locked === 'boolean') change.locked = m.locked;
+        return this.setRoom(change);
+      }
+      case 'pin': {
+        if (!a.admin) return;
+        if (m.id == null) return this.setRoom({ pin: null });
+        const r = this.sql.exec('SELECT * FROM messages WHERE id = ? AND deleted = 0', m.id).toArray()[0];
+        if (!r) return;
+        return this.setRoom({ pin: this.row(r) });
+      }
+      case 'users': {
+        if (!a.admin) return;
+        const online = new Map<string, boolean>();
         for (const other of this.ctx.getWebSockets()) {
           const oa = this.att(other);
-          if (oa.uid === uid) { this.setAtt(other, { ...oa, banned: on }); this.send(other, { type: 'you', uid, admin: !!oa.admin, banned: on }); }
+          if (oa.uid) online.set(oa.uid, (online.get(oa.uid) ?? false) || !!oa.live);
         }
-        return;
+        const now = Date.now();
+        const rows = this.sql.exec(`
+          SELECT u.uid, u.name, u.avatar, u.admin, u.banned, u.muted, u.seen, u.created,
+                 (SELECT COUNT(*) FROM messages WHERE uid = u.uid AND deleted = 0) AS messages
+          FROM users u ORDER BY u.seen DESC LIMIT 300`).toArray();
+        let users = rows.map((u) => ({
+          uid: u.uid, name: u.name, avatar: u.avatar, admin: !!u.admin, banned: !!u.banned,
+          mutedUntil: Number(u.muted ?? 0) > now ? Number(u.muted) : 0, seen: u.seen ?? 0, joined: u.created ?? u.seen ?? 0,
+          messages: u.messages, online: online.has(u.uid as string), live: online.get(u.uid as string) ?? false,
+        }));
+        if (m.filter === 'online') users = users.filter((u) => u.online);
+        else if (m.filter === 'banned') users = users.filter((u) => u.banned);
+        else if (m.filter === 'muted') users = users.filter((u) => u.mutedUntil > 0);
+        return this.send(ws, { type: 'users', users });
+      }
+      case 'stats': {
+        if (!a.admin) return;
+        const one = (q: string, ...b: SqlStorageValue[]) => Number(this.sql.exec(q, ...b).one().n);
+        const day = Date.now() - 24 * 3600_000;
+        const p = this.presence();
+        return this.send(ws, {
+          type: 'stats', online: p.online, live: p.live,
+          users: one('SELECT COUNT(*) AS n FROM users'),
+          banned: one('SELECT COUNT(*) AS n FROM users WHERE banned = 1'),
+          muted: one('SELECT COUNT(*) AS n FROM users WHERE muted > ?', Date.now()),
+          messagesToday: one('SELECT COUNT(*) AS n FROM messages WHERE ts > ? AND deleted = 0', day),
+          messages: one('SELECT COUNT(*) AS n FROM messages WHERE deleted = 0'),
+          activeToday: one('SELECT COUNT(*) AS n FROM users WHERE seen > ?', day),
+        });
       }
       case 'admin': {
-        if (!this.env.ADMIN_CODE || clean(m.code, 128) !== this.env.ADMIN_CODE) return this.send(ws, { type: 'error', text: "Kod noto'g'ri" });
+        const code = clean(m.code, 128);
+        const ok = !!code && (!!ADMIN_KEYS[await sha256(code)] || (!!this.env.ADMIN_CODE && code === this.env.ADMIN_CODE));
+        if (!ok) return this.send(ws, { type: 'admin', ok: false, text: "Kalit noto'g'ri" });
         this.sql.exec('UPDATE users SET admin = 1 WHERE uid = ?', a.uid);
-        this.setAtt(ws, { ...a, admin: true });
-        return this.send(ws, { type: 'you', uid: a.uid, admin: true, banned: !!a.banned });
+        this.updateUser(a.uid, { admin: true });
+        return this.send(ws, { type: 'admin', ok: true });
+      }
+      case 'unadmin': {
+        this.sql.exec('UPDATE users SET admin = 0 WHERE uid = ?', a.uid);
+        return this.updateUser(a.uid, { admin: false });
       }
       case 'profile': {
         const name = clean(m.name, 32) || a.name || 'Mehmon';
@@ -308,6 +447,7 @@ export class ChatRoom extends DurableObject<Env> {
         }
         return this.send(ws, {
           type: 'user', uid, name: u.name, avatar: u.avatar, admin: !!u.admin, banned: !!u.banned,
+          mutedUntil: Number(u.muted ?? 0) > Date.now() ? Number(u.muted) : 0,
           joined: u.created ?? u.seen, seen: u.seen, online, live, messages: count,
           card: u.card ? JSON.parse(u.card as string) : null,
         });
@@ -317,6 +457,37 @@ export class ChatRoom extends DurableObject<Env> {
         return this.broadcast(this.presence());
       }
     }
+  }
+
+  /** Removes every message of [uid] for everybody. */
+  private purge(uid: string) {
+    if (!uid) return;
+    this.sql.exec('UPDATE messages SET deleted = 1 WHERE uid = ? AND deleted = 0', uid);
+    this.broadcast({ type: 'purged', uid });
+  }
+
+  /* ---------- what people listen to: one row per listener, song and day ---------- */
+
+  private async recordPlay(req: Request): Promise<Response> {
+    const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const uid = clean(b.uid, 64);
+    const key = clean(b.key, 128);
+    const tid = clean(b.id, 80);
+    const user = this.sql.exec('SELECT keyhash FROM users WHERE uid = ?', uid).toArray()[0];
+    if (!tid || !user || user.keyhash !== (await sha256(key))) return Response.json({ ok: false }, { status: 403 });
+    const day = Math.floor(Date.now() / 86_400_000);
+    this.sql.exec('INSERT OR IGNORE INTO plays (day, tid, uid) VALUES (?, ?, ?)', day, tid, uid);
+    // keep a month at most
+    if (Math.random() < 0.02) this.sql.exec('DELETE FROM plays WHERE day < ?', day - 30);
+    return Response.json({ ok: true });
+  }
+
+  private trending(): Response {
+    const since = Math.floor(Date.now() / 86_400_000) - 7;
+    const tracks = this.sql.exec(
+      'SELECT tid AS id, COUNT(DISTINCT uid) AS n FROM plays WHERE day >= ? GROUP BY tid ORDER BY n DESC, MAX(day) DESC LIMIT 20', since,
+    ).toArray();
+    return Response.json({ tracks }, { headers: { 'Cache-Control': 'max-age=300', 'Access-Control-Allow-Origin': '*' } });
   }
 
   /* ---------- avatars: a listener's own photo, shown to everybody ---------- */
