@@ -122,12 +122,15 @@ fun Profile(ui: UiState) {
             }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
+                val active = LocalPageActive.current
+                LaunchedEffect(active) { if (!active) focus.clearFocus() }
                 var name by remember(profile.name) { mutableStateOf(profile.name) }
                 Box {
                     if (name.isEmpty()) BasicText("MEHMON", style = T.pixel(24.sp, K.ink.copy(alpha = 0.35f), weight = FontWeight.SemiBold, lh = 26.sp))
                     BasicTextField(
                         name, { if (it.length <= 18) name = it },
                         Modifier.fillMaxWidth(),
+                        enabled = active,
                         singleLine = true,
                         textStyle = T.pixel(24.sp, K.ink, weight = FontWeight.SemiBold, lh = 26.sp),
                         cursorBrush = SolidColor(K.ink),
@@ -258,7 +261,7 @@ fun Profile(ui: UiState) {
             }
             GrooveH()
             SettingRow("Qo'shiq matni", "Matnli qo'shiqlar uchun til") {
-                Switch3(if (lang == Lang.JP) 1 else 0, listOf("O'ZB", "日本")) { store.setLang(if (it == 1) Lang.JP else Lang.UZ) }
+                Switch3(lang.ordinal, listOf("O'ZB", "ROM", "日本")) { store.setLang(Lang.entries[it]) }
             }
             GrooveH()
             // ticks while the timer runs so the countdown stays current

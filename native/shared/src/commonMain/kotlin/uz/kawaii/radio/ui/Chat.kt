@@ -90,8 +90,14 @@ fun Chat(active: Boolean) {
     val store = LocalStore.current
     val chat = store.chat
     val sound = LocalSound.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(active) {
-        if (active) { chat.start(); store.platform.clearChatNotifications() }
+        if (active) {
+            chat.start()
+            store.platform.clearChatNotifications()
+        } else {
+            focus.clearFocus()
+        }
         chat.setPageVisible(active)
     }
 
@@ -106,6 +112,7 @@ fun Chat(active: Boolean) {
 
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ChatMsg?>(null) }
+    var selectedMsg by remember { mutableStateOf<ChatMsg?>(null) }
     var picker by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
 
@@ -152,10 +159,9 @@ fun Chat(active: Boolean) {
             ) {
                 items(reversed, key = { m -> if (m.pending) "p-${m.nonce}" else "m-${m.id}" }) { m ->
                     Bubble(
-                        m, mine = m.uid == me.uid, admin = me.admin,
-                        onReply = { replyTo = m },
-                        onDelete = { chat.delete(m) },
-                        onBan = { chat.ban(m.uid, true) },
+                        m, mine = m.uid == me.uid,
+                        selected = selectedMsg?.let { it.id == m.id && it.nonce == m.nonce } == true,
+                        onOpenMenu = { if (!m.pending || m.uid == me.uid) { sound.press(); focus.clearFocus(); selectedMsg = m } },
                         onReact = { e -> chat.react(m, e) },
                         myUid = me.uid,
                         mentionsMe = chat.mentionsMe(m),
@@ -178,7 +184,6 @@ fun Chat(active: Boolean) {
             }
         }
 
-        // reply preview
         // "@" suggestions: names seen in the chat that start with what was typed after "@"
         val word = draft.substringAfterLast(' ').substringAfterLast('\n')
         if (word.startsWith("@")) {
@@ -196,14 +201,21 @@ fun Chat(active: Boolean) {
 
         replyTo?.let { r ->
             Row(
-                Modifier.padding(horizontal = 16.dp).fillMaxWidth().tray(RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.padding(horizontal = 12.dp, vertical = 2.dp).fillMaxWidth().tray(RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Column(Modifier.weight(1f)) {
-                    BasicText("↩ ${r.name}", style = T.pixel(12.sp, K.inkSoft))
-                    BasicText(preview(r), style = T.pixel(13.sp, K.ink), maxLines = 1)
+                Box(Modifier.size(30.dp).raised(RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+                    Px(Glyph.REPLY, 13.dp, K.accent)
                 }
-                BasicText("✕", Modifier.tap(onClick = { replyTo = null }).padding(6.dp), style = T.pixel(15.sp, K.ink))
+                Column(Modifier.weight(1f)) {
+                    BasicText(r.name, style = T.pixel(12.sp, K.accent, weight = androidx.compose.ui.text.font.FontWeight.SemiBold), maxLines = 1)
+                    BasicText(preview(r), style = T.pixel(13.sp, K.ink), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+                Box(
+                    Modifier.size(30.dp).raised(RoundedCornerShape(9.dp)).tap(onClick = { sound.press(); replyTo = null }),
+                    contentAlignment = Alignment.Center,
+                ) { BasicText("×", style = T.display(16.sp, K.ctlInk)) }
             }
         }
 
@@ -228,6 +240,7 @@ fun Chat(active: Boolean) {
                     BasicTextField(
                         draft, { if (it.length <= 1000) draft = it },
                         Modifier.fillMaxWidth(),
+                        enabled = active,
                         maxLines = 4,
                         textStyle = T.pixel(15.sp, K.lcdInk, lh = 18.sp).copy(shadow = lcdShadow()),
                         cursorBrush = SolidColor(K.lcdInk),
@@ -257,6 +270,20 @@ fun Chat(active: Boolean) {
         }
     }
 
+    MessageActionSheet(
+        msg = selectedMsg,
+        mine = selectedMsg?.uid == me.uid,
+        admin = me.admin,
+        myUid = me.uid,
+        onDismiss = { selectedMsg = null },
+        onReply = { m -> replyTo = m },
+        onCopied = { toast = "Matn nusxalandi ✓" },
+        onProfile = { m -> store.chat.whois(m.uid) },
+        onDelete = { m -> chat.delete(m) },
+        onBan = { m -> chat.ban(m.uid, true) },
+        onReact = { m, e -> chat.react(m, e) },
+    )
+
     UserSheet()
 }
 
@@ -276,12 +303,11 @@ private fun RoundKey(glyph: List<String>, enabled: Boolean = true, active: Boole
 
 @Composable
 private fun Bubble(
-    m: ChatMsg, mine: Boolean, admin: Boolean,
-    onReply: () -> Unit, onDelete: () -> Unit, onBan: () -> Unit,
+    m: ChatMsg, mine: Boolean, selected: Boolean,
+    onOpenMenu: () -> Unit,
     onReact: (String) -> Unit, myUid: String, mentionsMe: Boolean,
 ) {
     val store = LocalStore.current
-    var menu by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().alpha(if (m.pending) 0.6f else 1f),
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
@@ -294,10 +320,15 @@ private fun Bubble(
         val shape = RoundedCornerShape(16.dp)
         val bare = m.kind == "sticker"
         Column(
-            Modifier.widthIn(max = 270.dp)
-                .then(if (bare) Modifier else if (mine) Modifier.lcd(shape).border(2.dp, K.lcdBorder, shape) else Modifier.raised(shape))
+            Modifier.widthIn(max = 276.dp)
+                .then(if (bare) Modifier else if (mine) Modifier.lcd(shape).border(2.dp, if (selected) K.accent else K.lcdBorder, shape) else Modifier.raised(shape, selected))
                 .then(if (mentionsMe && !bare) Modifier.border(2.dp, K.gold, shape) else Modifier)
-                .pointerInput(m.id, m.nonce) { detectTapGestures(onLongPress = { if (!m.pending || mine) menu = true }) }
+                .pointerInput(m.id, m.nonce) {
+                    detectTapGestures(
+                        onTap = { onOpenMenu() },
+                        onLongPress = { onOpenMenu() },
+                    )
+                }
                 .padding(horizontal = if (bare) 0.dp else 12.dp, vertical = if (bare) 0.dp else 8.dp),
         ) {
             val ink = if (mine) K.lcdInk else K.ink
@@ -306,9 +337,23 @@ private fun Bubble(
                 style = T.pixel(12.sp, K.inkSoft, weight = androidx.compose.ui.text.font.FontWeight.SemiBold),
             )
             m.reply?.let { r ->
-                Column(Modifier.padding(top = 4.dp, bottom = 4.dp)) {
-                    BasicText("↩ ${r.name}", style = T.pixel(11.sp, ink.copy(alpha = 0.6f)))
-                    BasicText(if (r.kind == "text") r.body else if (r.kind == "sticker") "Stiker" else "Qo'shiq", style = T.pixel(12.sp, ink.copy(alpha = 0.75f)), maxLines = 1)
+                Row(
+                    Modifier.padding(top = 4.dp, bottom = 4.dp)
+                        .border(1.dp, ink.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Px(Glyph.REPLY, 10.dp, ink.copy(alpha = 0.65f))
+                    Column {
+                        BasicText(r.name, style = T.pixel(11.sp, ink.copy(alpha = 0.7f), weight = androidx.compose.ui.text.font.FontWeight.SemiBold), maxLines = 1)
+                        BasicText(
+                            if (r.kind == "text") r.body else if (r.kind == "sticker") "Stiker" else "Qo'shiq",
+                            style = T.pixel(12.sp, ink.copy(alpha = 0.8f)),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             when (m.kind) {
@@ -316,7 +361,7 @@ private fun Bubble(
                 "track" -> {
                     val t = store.track(m.body)
                     Row(
-                        Modifier.padding(top = 2.dp).tap(onClick = { if (t != null) store.play(t.id) }),
+                        Modifier.padding(top = 2.dp).tap(onClick = { if (t != null) store.play(t.id) else onOpenMenu() }),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
@@ -348,7 +393,6 @@ private fun Bubble(
                     }
                 }
             }
-            if (menu) MessageMenu(m, mine, admin, onDismiss = { menu = false }, onReply = onReply, onDelete = onDelete, onBan = onBan, onReact = onReact)
         }
     }
 }
@@ -394,52 +438,147 @@ private fun NowPlayingChip() {
     }
 }
 
-/** Telegram-style menu next to the message: below it, or above when there is no room. */
-private class NextToBubble(private val mine: Boolean, private val gap: Int) : PopupPositionProvider {
-    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-        val maxX = (windowSize.width - popupContentSize.width).coerceAtLeast(0)
-        val x = (if (mine) anchorBounds.right - popupContentSize.width else anchorBounds.left).coerceIn(0, maxX)
-        val below = anchorBounds.bottom + gap
-        val y = if (below + popupContentSize.height <= windowSize.height) below
-        else (anchorBounds.top - gap - popupContentSize.height).coerceAtLeast(0)
-        return IntOffset(x, y)
-    }
-}
-
+/** Tactile bottom action sheet for a chat message: LCD message preview, full-width reaction dock, and hardware keys. */
 @Suppress("DEPRECATION")
 @Composable
-private fun MessageMenu(
-    m: ChatMsg, mine: Boolean, admin: Boolean,
-    onDismiss: () -> Unit, onReply: () -> Unit, onDelete: () -> Unit, onBan: () -> Unit, onReact: (String) -> Unit,
+private fun MessageActionSheet(
+    msg: ChatMsg?,
+    mine: Boolean,
+    admin: Boolean,
+    myUid: String,
+    onDismiss: () -> Unit,
+    onReply: (ChatMsg) -> Unit,
+    onCopied: () -> Unit,
+    onProfile: (ChatMsg) -> Unit,
+    onDelete: (ChatMsg) -> Unit,
+    onBan: (ChatMsg) -> Unit,
+    onReact: (ChatMsg, String) -> Unit,
 ) {
     val sound = LocalSound.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-    val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 6.dp.roundToPx() }
-    Popup(popupPositionProvider = NextToBubble(mine, gap), onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
-        Column(Modifier.width(196.dp).raised(RoundedCornerShape(14.dp)).padding(vertical = 4.dp)) {
-            @Composable
-            fun item(label: String, color: androidx.compose.ui.graphics.Color = K.ink, action: () -> Unit) {
-                Box(
-                    Modifier.fillMaxWidth().height(42.dp).tap(onClick = { sound.press(); onDismiss(); action() }).padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) { BasicText(label, style = T.pixel(14.sp, color)) }
+    var last by remember { mutableStateOf<ChatMsg?>(null) }
+    if (msg != null) last = msg
+    val m = last
+
+    uz.kawaii.radio.ui.sheets.BaseSheet(open = msg != null, onClose = onDismiss, radius = 28.dp) {
+        if (m == null) return@BaseSheet
+        Column(
+            Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // Drag handle
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(48.dp, 5.dp).tray( androidx.compose.foundation.shape.CircleShape))
             }
-            // quick reactions on top, like Telegram
-            if (!m.pending) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    for (e in uz.kawaii.radio.chat.REACTIONS) {
-                        Box(
-                            Modifier.size(40.dp).tap(onClick = { sound.press(); onDismiss(); onReact(e) }),
-                            contentAlignment = Alignment.Center,
-                        ) { BasicText(e, style = T.pixel(22.sp, K.ink)) }
+
+            // LCD preview of the selected message
+            Box(Modifier.fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(4.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().lcd(RoundedCornerShape(14.dp)).border(2.dp, K.lcdBorder, RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    AvatarView(m.avatar, null, 34.dp)
+                    Column(Modifier.weight(1f)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            BasicText(
+                                m.name.uppercase(),
+                                style = T.pixel(13.sp, K.lcdInk, weight = androidx.compose.ui.text.font.FontWeight.SemiBold, lh = 15.sp).copy(shadow = lcdShadow()),
+                                maxLines = 1,
+                            )
+                            BasicText(clock(m.ts), style = T.pixel(11.sp, K.lcdInk.copy(alpha = 0.6f), lh = 13.sp))
+                        }
+                        BasicText(
+                            preview(m),
+                            Modifier.padding(top = 3.dp),
+                            style = T.pixel(14.sp, K.lcdInk.copy(alpha = 0.85f), lh = 18.sp),
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
                     }
                 }
-                Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 10.dp).raised(RoundedCornerShape(1.dp)))
             }
-            if (!m.pending) item("↩  Javob berish", action = onReply)
-            if (m.kind == "text") item("⧉  Nusxa olish") { clipboard.setText(androidx.compose.ui.text.AnnotatedString(m.body)) }
-            if (mine || admin) item("✕  O'chirish", K.onAir, onDelete)
-            if (admin && !mine) item("⊘  Bloklash", K.onAir, onBan)
+
+            // Quick emoji reactions in a recessed hardware tray
+            if (!m.pending) {
+                Row(
+                    Modifier.fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    for (e in uz.kawaii.radio.chat.REACTIONS) {
+                        val picked = myUid in m.reactions[e].orEmpty()
+                        Box(
+                            Modifier.weight(1f).height(44.dp).raised(RoundedCornerShape(13.dp), picked)
+                                .tap(onClick = { sound.press(); onDismiss(); onReact(m, e) }),
+                            contentAlignment = Alignment.Center,
+                        ) { BasicText(e, style = T.pixel(21.sp, K.ink)) }
+                    }
+                }
+            }
+
+            // Primary action keys (Reply + Copy)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!m.pending) {
+                    PixelKey(
+                        "Javob berish",
+                        Modifier.weight(1f),
+                        glyph = Glyph.REPLY,
+                        glyphSize = 14.dp,
+                        height = 46.dp,
+                    ) { onDismiss(); onReply(m) }
+                }
+                if (m.kind == "text") {
+                    PixelKey(
+                        "Nusxa olish",
+                        Modifier.weight(1f),
+                        glyph = Glyph.COPY,
+                        glyphSize = 14.dp,
+                        height = 46.dp,
+                    ) {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(m.body))
+                        onDismiss()
+                        onCopied()
+                    }
+                }
+            }
+
+            // Secondary action keys (Profile, Delete, Ban)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!mine) {
+                    PixelKey(
+                        "Profilni ko'rish",
+                        Modifier.weight(1f),
+                        glyph = Glyph.USER,
+                        glyphSize = 14.dp,
+                        height = 46.dp,
+                    ) { onDismiss(); onProfile(m) }
+                }
+                if (mine || admin) {
+                    Box(
+                        Modifier.weight(1f).height(46.dp).raised(RoundedCornerShape(14.dp))
+                            .tap(onClick = { sound.press(); onDismiss(); onDelete(m) }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Px(Glyph.TRASH, 13.dp, K.onAir)
+                            BasicText("O'chirish", style = T.pixel(14.sp, K.onAir, weight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                        }
+                    }
+                }
+                if (admin && !mine) {
+                    Box(
+                        Modifier.weight(1f).height(46.dp).raised(RoundedCornerShape(14.dp))
+                            .tap(onClick = { sound.press(); onDismiss(); onBan(m) }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Px(Glyph.BAN, 13.dp, K.onAir)
+                            BasicText("Bloklash", style = T.pixel(14.sp, K.onAir, weight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -153,6 +153,12 @@ fun KawaiiApp(store: RadioStore, ui: UiState) {
 
         // the radio has a dark panel under the status bar; the other pages are plastic all the way up
         val onHome = ui.page == Page.Home
+        val focus = androidx.compose.ui.platform.LocalFocusManager.current
+        val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        LaunchedEffect(ui.page, booted, splashGone) {
+            focus.clearFocus()
+            keyboard?.hide()
+        }
         val strip by animateColorAsState(if (onHome) K.bar else K.base2, tween(220))
         SideEffect { store.platform.setSystemBarIcons(statusDark = splashGone && !onHome && !dark, navDark = !dark) }
 

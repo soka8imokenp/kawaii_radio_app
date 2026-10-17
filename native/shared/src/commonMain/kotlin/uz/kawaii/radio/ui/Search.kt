@@ -88,6 +88,7 @@ fun Search(active: Boolean) {
                     BasicTextField(
                         query, { query = it },
                         Modifier.fillMaxWidth(),
+                        enabled = active,
                         singleLine = true,
                         textStyle = T.pixel(16.sp, K.lcdInk, lh = 18.sp).copy(shadow = lcdShadow()),
                         cursorBrush = SolidColor(K.lcdInk),
