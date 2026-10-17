@@ -22,6 +22,10 @@ import type { Env } from './index';
  *   pin      { id | null }                       pins a message on top of the chat (null unpins)
  *   users    { filter? }                         listener list for the admin panel ('online' | 'banned' | 'muted' | all)
  *   stats    {}                                  numbers for the admin panel
+ *   log      { mine? }                           the admin journal (newest first)
+ * Owner (the main admin) only:
+ *   setadmin { uid, on }                         gives / takes away admin rights
+ * Admins can't touch each other (block, mute, wipe); only the owner can, and nobody touches the owner.
  *   profile  { name, avatar, card }              card = public profile (favourite artist, stats, song on now)
  *   whois    { uid }                             asks for somebody's profile page
  *   react    { id, emoji }                       toggles a reaction (❤️ 🔥 😂 😭), one per person per message
@@ -38,23 +42,28 @@ import type { Env } from './index';
  *   admin    { ok, text? }                       answer to an admin login
  *   users    { users }                           answer to `users`
  *   stats    { … }                               answer to `stats`
+ *   staff    { staff }                           uid → 1 (admin) / 2 (owner), sent on join and whenever it changes
+ *   log      { entries }                         answer to `log`
  *   msg      { m, nonce? }
  *   deleted  { id }
  *   history  { msgs }                            newest last
  *   presence { online, live }
- *   you      { uid, admin, banned, mutedUntil }
+ *   you      { uid, admin, owner, banned, mutedUntil }
  *   user     { uid, name, avatar, admin, joined, seen, online, live, messages, card }
  *   reactions { id, reactions }                  reactions = { emoji: [uid…] }
  *   typing   { uid, name }
  *   error    { text }
  */
 
-interface Attachment { uid?: string; admin?: boolean; banned?: boolean; live?: boolean; viewing?: boolean; name?: string; avatar?: string; sent?: number[]; typingAt?: number; mutedUntil?: number }
+interface Attachment { uid?: string; admin?: boolean; owner?: boolean; banned?: boolean; live?: boolean; viewing?: boolean; name?: string; avatar?: string; sent?: number[]; typingAt?: number; mutedUntil?: number }
 
 /**
  * Personal admin keys, stored as SHA-256 only (the keys themselves are never in the code): one per
  * admin, so a key can be replaced without touching the other. Typed in the app: Profil → Admin.
  */
+/** Admin key labels with the owner role: they can give and take admin rights. */
+const OWNER_LABELS = new Set(['soka']);
+
 const ADMIN_KEYS: Record<string, string> = {
   '6c01da4f33f9935d8c31e555597b950e0fc0068b16bb8d164638abec2d01e4b9': 'soka',
   'cc8ce06ba7233a632af4023008b7c555391378898a6114bb764601ff09c0e843': 'dost',
@@ -85,6 +94,9 @@ async function sha256(s: string) {
   const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+/** Chat formatting marks (**bold**, __italic__, ++underline++, ~~strike~~, `code`, ||spoiler||) taken out, e.g. for a push. */
+const stripFormat = (s: string) => s.replace(/(\*\*|__|\+\+|~~|\|\||`)(.+?)\1/g, (_, mark, inner) => (mark === '||' ? '▒▒▒' : inner));
 
 const clean = (s: unknown, max: number) => (typeof s === 'string' ? s.trim().slice(0, max) : '');
 
@@ -120,6 +132,9 @@ export class ChatRoom extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS push (uid TEXT PRIMARY KEY, token TEXT, enabled INTEGER DEFAULT 1);
       CREATE TABLE IF NOT EXISTS reactions (mid INTEGER, uid TEXT, emoji TEXT, PRIMARY KEY (mid, uid));
       CREATE TABLE IF NOT EXISTS plays (day INTEGER, tid TEXT, uid TEXT, PRIMARY KEY (day, tid, uid));
+      CREATE TABLE IF NOT EXISTS adminlog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, actor TEXT, actorName TEXT,
+        action TEXT, target TEXT, targetName TEXT, detail TEXT);
     `);
     // columns added later: ignore "duplicate column" on rooms that already have them
     for (const col of ['card TEXT', 'created INTEGER', 'muted INTEGER DEFAULT 0']) {
@@ -173,8 +188,42 @@ export class ChatRoom extends DurableObject<Env> {
       if (oa.uid !== uid) continue;
       const na = { ...oa, ...change };
       this.setAtt(other, na);
-      this.send(other, { type: 'you', uid, admin: !!na.admin, banned: !!na.banned, mutedUntil: na.mutedUntil ?? 0 });
+      this.send(other, { type: 'you', uid, admin: !!na.admin, owner: !!na.owner, banned: !!na.banned, mutedUntil: na.mutedUntil ?? 0 });
     }
+  }
+
+  /** 0 = listener, 1 = admin, 2 = owner. */
+  private role(uid: string): number {
+    return Number(this.sql.exec('SELECT admin FROM users WHERE uid = ?', uid).toArray()[0]?.admin ?? 0);
+  }
+
+  /** Admins and the owner, uid → role. */
+  private staff(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const r of this.sql.exec('SELECT uid, admin FROM users WHERE admin > 0').toArray()) out[r.uid as string] = Number(r.admin);
+    return out;
+  }
+
+  /**
+   * May [a] block / mute / wipe [uid]? Never themselves; other admins only when [a] is the owner;
+   * the owner never. Says why not to [ws].
+   */
+  private canTouch(ws: WebSocket, a: Attachment, uid: string): boolean {
+    if (!uid) return false;
+    if (uid === a.uid) { this.send(ws, { type: 'error', text: "O'zingizga qo'llab bo'lmaydi" }); return false; }
+    const r = this.role(uid);
+    if (r === 2 || (r === 1 && !a.owner)) { this.send(ws, { type: 'error', text: "Adminga qo'llab bo'lmaydi" }); return false; }
+    return true;
+  }
+
+  /** One line in the admin journal. */
+  private log(a: Attachment, action: string, target?: string, detail?: string) {
+    const targetName = target ? String(this.sql.exec('SELECT name FROM users WHERE uid = ?', target).toArray()[0]?.name ?? '') : null;
+    this.sql.exec(
+      'INSERT INTO adminlog (ts, actor, actorName, action, target, targetName, detail) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      Date.now(), a.uid ?? '', a.name ?? '', action, target ?? null, targetName, detail ?? null,
+    );
+    if (Math.random() < 0.05) this.sql.exec('DELETE FROM adminlog WHERE id < (SELECT MAX(id) - 2000 FROM adminlog)');
   }
 
   private presence() {
@@ -258,12 +307,16 @@ export class ChatRoom extends DurableObject<Env> {
       const card = cardOf(m.card);
       if (!user) this.sql.exec('INSERT INTO users (uid, keyhash, name, avatar, seen, card, created) VALUES (?, ?, ?, ?, ?, ?, ?)', uid, hash, name, avatar, Date.now(), card, Date.now());
       else this.sql.exec('UPDATE users SET name = ?, avatar = ?, seen = ?, card = COALESCE(?, card), created = COALESCE(created, ?) WHERE uid = ?', name, avatar, Date.now(), card, Date.now(), uid);
-      const admin = !!user?.admin;
+      const admin = Number(user?.admin ?? 0) > 0;
+      const owner = Number(user?.admin ?? 0) === 2;
       const banned = !!user?.banned;
       const mutedUntil = Number(user?.muted ?? 0) > Date.now() ? Number(user?.muted) : 0;
-      this.setAtt(ws, { uid, admin, banned, mutedUntil, live: !!m.live, name, avatar, sent: [] });
+      this.setAtt(ws, { uid, admin, owner, banned, mutedUntil, live: !!m.live, name, avatar, sent: [] });
       const p = this.presence();
-      this.send(ws, { type: 'welcome', you: { uid, admin, banned, mutedUntil }, history: this.recent(), online: p.online, live: p.live, room: await this.room() });
+      this.send(ws, {
+        type: 'welcome', you: { uid, admin, owner, banned, mutedUntil }, history: this.recent(), online: p.online, live: p.live,
+        room: await this.room(), staff: this.staff(),
+      });
       this.broadcast(this.presence());
       return;
     }
@@ -331,6 +384,7 @@ export class ChatRoom extends DurableObject<Env> {
         const r = this.sql.exec('SELECT uid FROM messages WHERE id = ?', m.id).toArray()[0];
         if (!r || (r.uid !== a.uid && !a.admin)) return;
         this.sql.exec('UPDATE messages SET deleted = 1 WHERE id = ?', m.id);
+        if (r.uid !== a.uid) this.log(a, 'delete', r.uid as string);
         if ((await this.room()).pin?.id === m.id) await this.setRoom({ pin: null });
         return this.broadcast({ type: 'deleted', id: m.id });
       }
@@ -338,24 +392,30 @@ export class ChatRoom extends DurableObject<Env> {
         if (!a.admin) return;
         const uid = clean(m.uid, 64);
         const on = !!m.on;
-        if (uid === a.uid) return this.send(ws, { type: 'error', text: "O'zingizni bloklab bo'lmaydi" });
+        if (!this.canTouch(ws, a, uid)) return;
         this.sql.exec('UPDATE users SET banned = ? WHERE uid = ?', on ? 1 : 0, uid);
         this.updateUser(uid, { banned: on });
         if (on && m.purge) this.purge(uid);
+        this.log(a, on ? 'ban' : 'unban', uid, on && m.purge ? 'xabarlari bilan' : undefined);
         return this.send(ws, { type: 'error', text: on ? 'Foydalanuvchi bloklandi' : 'Blokdan chiqarildi' });
       }
       case 'mute': {
         if (!a.admin) return;
         const uid = clean(m.uid, 64);
+        if (!this.canTouch(ws, a, uid)) return;
         const minutes = typeof m.minutes === 'number' ? Math.max(0, Math.min(m.minutes, 7 * 24 * 60)) : 0;
         const until = minutes > 0 ? Date.now() + minutes * 60_000 : 0;
         this.sql.exec('UPDATE users SET muted = ? WHERE uid = ?', until, uid);
         this.updateUser(uid, { mutedUntil: until });
+        this.log(a, until ? 'mute' : 'unmute', uid, until ? `${minutes} daq` : undefined);
         return this.send(ws, { type: 'error', text: until ? `${minutes} daqiqaga ovozsiz qilindi` : 'Yana yoza oladi' });
       }
       case 'purge': {
         if (!a.admin) return;
-        this.purge(clean(m.uid, 64));
+        const uid = clean(m.uid, 64);
+        if (!this.canTouch(ws, a, uid)) return;
+        this.purge(uid);
+        this.log(a, 'purge', uid);
         return this.send(ws, { type: 'error', text: "Xabarlari o'chirildi" });
       }
       case 'clear': {
@@ -363,6 +423,7 @@ export class ChatRoom extends DurableObject<Env> {
         this.sql.exec('UPDATE messages SET deleted = 1 WHERE deleted = 0');
         this.sql.exec('DELETE FROM reactions');
         await this.setRoom({ pin: null });
+        this.log(a, 'clear');
         return this.broadcast({ type: 'cleared' });
       }
       case 'room': {
@@ -370,13 +431,16 @@ export class ChatRoom extends DurableObject<Env> {
         const change: Partial<Room> = {};
         if (typeof m.slow === 'number') change.slow = Math.max(0, Math.min(Math.round(m.slow), 600));
         if (typeof m.locked === 'boolean') change.locked = m.locked;
+        if (change.slow !== undefined) this.log(a, 'slow', undefined, change.slow ? `${change.slow} s` : "o'chdi");
+        if (change.locked !== undefined) this.log(a, change.locked ? 'lock' : 'unlock');
         return this.setRoom(change);
       }
       case 'pin': {
         if (!a.admin) return;
-        if (m.id == null) return this.setRoom({ pin: null });
+        if (m.id == null) { this.log(a, 'unpin'); return this.setRoom({ pin: null }); }
         const r = this.sql.exec('SELECT * FROM messages WHERE id = ? AND deleted = 0', m.id).toArray()[0];
         if (!r) return;
+        this.log(a, 'pin', r.uid as string, String(r.body).slice(0, 60));
         return this.setRoom({ pin: this.row(r) });
       }
       case 'users': {
@@ -392,7 +456,7 @@ export class ChatRoom extends DurableObject<Env> {
                  (SELECT COUNT(*) FROM messages WHERE uid = u.uid AND deleted = 0) AS messages
           FROM users u ORDER BY u.seen DESC LIMIT 300`).toArray();
         let users = rows.map((u) => ({
-          uid: u.uid, name: u.name, avatar: u.avatar, admin: !!u.admin, banned: !!u.banned,
+          uid: u.uid, name: u.name, avatar: u.avatar, admin: Number(u.admin ?? 0) > 0, owner: Number(u.admin ?? 0) === 2, banned: !!u.banned,
           mutedUntil: Number(u.muted ?? 0) > now ? Number(u.muted) : 0, seen: u.seen ?? 0, joined: u.created ?? u.seen ?? 0,
           messages: u.messages, online: online.has(u.uid as string), live: online.get(u.uid as string) ?? false,
         }));
@@ -418,15 +482,41 @@ export class ChatRoom extends DurableObject<Env> {
       }
       case 'admin': {
         const code = clean(m.code, 128);
-        const ok = !!code && (!!ADMIN_KEYS[await sha256(code)] || (!!this.env.ADMIN_CODE && code === this.env.ADMIN_CODE));
+        const label = code ? ADMIN_KEYS[await sha256(code)] : undefined;
+        const ok = !!label || (!!code && !!this.env.ADMIN_CODE && code === this.env.ADMIN_CODE);
         if (!ok) return this.send(ws, { type: 'admin', ok: false, text: "Kalit noto'g'ri" });
-        this.sql.exec('UPDATE users SET admin = 1 WHERE uid = ?', a.uid);
-        this.updateUser(a.uid, { admin: true });
+        const owner = !!label && OWNER_LABELS.has(label);
+        this.sql.exec('UPDATE users SET admin = ? WHERE uid = ?', owner ? 2 : 1, a.uid);
+        this.updateUser(a.uid, { admin: true, owner });
+        this.log({ ...a, admin: true }, 'login', undefined, owner ? 'bosh admin' : undefined);
+        this.broadcast({ type: 'staff', staff: this.staff() });
         return this.send(ws, { type: 'admin', ok: true });
       }
       case 'unadmin': {
+        if (a.owner) return this.send(ws, { type: 'error', text: "Bosh admin chiqa olmaydi" });
         this.sql.exec('UPDATE users SET admin = 0 WHERE uid = ?', a.uid);
-        return this.updateUser(a.uid, { admin: false });
+        this.updateUser(a.uid, { admin: false, owner: false });
+        this.log(a, 'logout');
+        return this.broadcast({ type: 'staff', staff: this.staff() });
+      }
+      case 'setadmin': {
+        if (!a.owner) return this.send(ws, { type: 'error', text: 'Faqat bosh admin' });
+        const uid = clean(m.uid, 64);
+        if (!uid || uid === a.uid || this.role(uid) === 2) return;
+        if (!this.sql.exec('SELECT 1 FROM users WHERE uid = ?', uid).toArray().length) return;
+        const on = !!m.on;
+        this.sql.exec('UPDATE users SET admin = ? WHERE uid = ?', on ? 1 : 0, uid);
+        this.updateUser(uid, { admin: on, owner: false });
+        this.log(a, on ? 'grant' : 'revoke', uid);
+        this.broadcast({ type: 'staff', staff: this.staff() });
+        return this.send(ws, { type: 'error', text: on ? 'Admin qilindi' : 'Adminlikdan olindi' });
+      }
+      case 'log': {
+        if (!a.admin) return;
+        const rows = m.mine
+          ? this.sql.exec('SELECT * FROM adminlog WHERE actor = ? ORDER BY id DESC LIMIT 150', a.uid).toArray()
+          : this.sql.exec('SELECT * FROM adminlog ORDER BY id DESC LIMIT 150').toArray();
+        return this.send(ws, { type: 'log', entries: rows });
       }
       case 'profile': {
         const name = clean(m.name, 32) || a.name || 'Mehmon';
@@ -446,7 +536,7 @@ export class ChatRoom extends DurableObject<Env> {
           if (oa.uid === uid) { online = true; live = live || !!oa.live; }
         }
         return this.send(ws, {
-          type: 'user', uid, name: u.name, avatar: u.avatar, admin: !!u.admin, banned: !!u.banned,
+          type: 'user', uid, name: u.name, avatar: u.avatar, admin: Number(u.admin ?? 0) > 0, owner: Number(u.admin ?? 0) === 2, banned: !!u.banned,
           mutedUntil: Number(u.muted ?? 0) > Date.now() ? Number(u.muted) : 0,
           joined: u.created ?? u.seen, seen: u.seen, online, live, messages: count,
           card: u.card ? JSON.parse(u.card as string) : null,
@@ -565,7 +655,7 @@ export class ChatRoom extends DurableObject<Env> {
       return;
     }
     const results: string[] = [];
-    const text = msg.kind === 'sticker' ? 'Stiker' : msg.kind === 'track' ? "♪ Qo'shiq ulashdi" : msg.body;
+    const text = msg.kind === 'sticker' ? 'Stiker' : msg.kind === 'track' ? "♪ Qo'shiq ulashdi" : stripFormat(msg.body);
     // data-only: the app draws the notification itself (chat style, grouped, our logo)
     const data = { type: 'chat', mid: String(msg.id), name: msg.name, avatar: msg.avatar, kind: msg.kind, text: text.slice(0, 300), ts: String(msg.ts) };
     await Promise.all(targets.map(async (t) => {

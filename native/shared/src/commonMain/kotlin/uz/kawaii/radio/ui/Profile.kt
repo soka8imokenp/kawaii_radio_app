@@ -144,6 +144,28 @@ fun Profile(ui: UiState) {
             }
         }
 
+        // ── admins: their desk, right on the profile page
+        val me by store.chat.me.collectAsState()
+        if (me.admin) {
+            Row(
+                Modifier.padding(top = 16.dp).fillMaxWidth()
+                    .dropShadow(RoundedCornerShape(18.dp), Shadow(14.dp, Color(245, 185, 59, 70), offset = DpOffset(0.dp, 6.dp)))
+                    .background(Brush.verticalGradient(listOf(Color(0xFFFFE08A), K.gold)), RoundedCornerShape(18.dp))
+                    .innerShadow(RoundedCornerShape(18.dp), Shadow(0.dp, Color(1f, 1f, 1f, 0.7f), offset = DpOffset(0.dp, 1.dp)))
+                    .pressClick(onClick = { ui.admin = true })
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Px(Glyph.STAR, 18.dp, Color(0xFF3A2A05))
+                Column(Modifier.weight(1f)) {
+                    BasicText(if (me.owner) "BOSH ADMIN PANELI" else "ADMIN PANELI", style = T.pixel(15.sp, Color(0xFF3A2A05), weight = FontWeight.SemiBold, ls = 0.06.em))
+                    BasicText("Chat, tinglovchilar va jurnal", style = T.pixel(12.sp, Color(0xFF3A2A05).copy(alpha = 0.7f)))
+                }
+                BasicText("›", style = T.pixel(22.sp, Color(0xFF3A2A05)))
+            }
+        }
+
         // ── favourite artist on its own little LCD
         SectionLabel("Sevimli ijrochi")
         Box(Modifier.fillMaxWidth().tray(RoundedCornerShape(20.dp)).padding(5.dp)) {
@@ -396,11 +418,8 @@ private fun AdminEntry(ui: UiState) {
     var open by remember { mutableStateOf(false) }
     var key by remember { mutableStateOf("") }
     if (me.admin) {
-        SettingRow("Admin", "Chatni boshqarish: tozalash, bloklash, sekin rejim") {
-            SmallKey(onClick = { ui.admin = true }) {
-                Px(Glyph.STAR, 12.dp, K.gold)
-                BasicText("PANEL", style = T.micro(11.sp))
-            }
+        SettingRow(if (me.owner) "Siz bosh adminsiz" else "Siz adminsiz", if (me.owner) "Adminlarni tayinlash va olib tashlash mumkin" else "Panel profil sahifasining tepasida") {
+            if (!me.owner) SmallKey(onClick = { chat.adminLogout() }) { BasicText("CHIQISH", style = T.micro(11.sp)) }
         }
         return
     }

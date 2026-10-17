@@ -92,6 +92,7 @@ data class UserCard(
     val name: String = "Mehmon",
     val avatar: String = "p:0",
     val admin: Boolean = false,
+    val owner: Boolean = false,
     val banned: Boolean = false,
     val joined: Long = 0,
     val seen: Long = 0,
@@ -110,6 +111,7 @@ data class AdminUser(
     val name: String = "Mehmon",
     val avatar: String = "p:0",
     val admin: Boolean = false,
+    val owner: Boolean = false,
     val banned: Boolean = false,
     val mutedUntil: Long = 0,
     val seen: Long = 0,
@@ -117,6 +119,20 @@ data class AdminUser(
     val messages: Int = 0,
     val online: Boolean = false,
     val live: Boolean = false,
+)
+
+/** One line of the admin journal: who did what to whom. */
+@Serializable
+data class LogEntry(
+    val id: Long = 0,
+    val ts: Long = 0,
+    val actor: String = "",
+    val actorName: String = "",
+    /** ban, unban, mute, unmute, purge, delete, clear, slow, lock, unlock, pin, unpin, grant, revoke, login, logout */
+    val action: String = "",
+    val target: String? = null,
+    val targetName: String? = null,
+    val detail: String? = null,
 )
 
 /** Numbers on the admin panel's LCD. */
@@ -145,7 +161,10 @@ sealed interface AdminLogin {
     data class Failed(val text: String) : AdminLogin
 }
 
-data class Me(val uid: String, val admin: Boolean = false, val banned: Boolean = false, val mutedUntil: Long = 0)
+data class Me(val uid: String, val admin: Boolean = false, val banned: Boolean = false, val mutedUntil: Long = 0, val owner: Boolean = false) {
+    /** May this listener block / mute / wipe somebody with [role] (0 listener, 1 admin, 2 owner)? */
+    fun canTouch(uid: String, role: Int): Boolean = admin && uid != this.uid && (role == 0 || (role == 1 && owner))
+}
 
 private const val ID_KEY = "chat-id"
 private const val READ_KEY = "chat-read"
@@ -211,6 +230,15 @@ class ChatStore(
 
     private val _stats = MutableStateFlow<RoomStats?>(null)
     val stats: StateFlow<RoomStats?> = _stats.asStateFlow()
+
+    private val _staff = MutableStateFlow<Map<String, Int>>(emptyMap())
+    /** Admins (1) and the owner (2) by uid: admins can't block each other, so the keys hide for them. */
+    val staff: StateFlow<Map<String, Int>> = _staff.asStateFlow()
+    fun role(uid: String): Int = _staff.value[uid] ?: 0
+
+    private val _log = MutableStateFlow<List<LogEntry>?>(null)
+    /** Admin journal of the last [loadLog], newest first; null while loading. */
+    val log: StateFlow<List<LogEntry>?> = _log.asStateFlow()
 
     private val _avatarSync = MutableStateFlow(AvatarSync.Idle)
     /** The gallery photo on its way to the chat server (shown in the avatar picker). */
@@ -405,6 +433,7 @@ class ChatStore(
                 _hasMore.value = history.size >= HISTORY_PAGE
                 presence(o)
                 o["room"]?.jsonObject?.let(::applyRoom)
+                o["staff"]?.let(::applyStaff)
                 sendViewing()
                 resendPending()
             }
@@ -436,6 +465,8 @@ class ChatStore(
             "user" -> _user.value = runCatching { json.decodeFromJsonElement(UserCard.serializer(), o) }.getOrNull()
             "error" -> o.str("text")?.let { _errors.tryEmit(it) }
             "room" -> applyRoom(o)
+            "staff" -> o["staff"]?.let(::applyStaff)
+            "log" -> _log.value = o["entries"]?.jsonArray?.mapNotNull { runCatching { json.decodeFromJsonElement(LogEntry.serializer(), it) }.getOrNull() }.orEmpty()
             "cleared" -> _messages.update { old -> old.filter { it.pending } }
             "purged" -> {
                 val uid = o.str("uid") ?: return
@@ -455,9 +486,14 @@ class ChatStore(
             admin = o["admin"]?.jsonPrimitive?.booleanOrNull == true,
             banned = o["banned"]?.jsonPrimitive?.booleanOrNull == true,
             mutedUntil = o["mutedUntil"]?.jsonPrimitive?.longOrNull ?: 0,
+            owner = o["owner"]?.jsonPrimitive?.booleanOrNull == true,
         )
         // an admin action changed somebody's rights: refresh the open admin list
         if (_me.value.admin && _users.value != null) loadUsers(lastFilter)
+    }
+
+    private fun applyStaff(e: kotlinx.serialization.json.JsonElement) {
+        _staff.value = runCatching { e.jsonObject.mapValues { it.value.jsonPrimitive.intOrNull ?: 0 } }.getOrDefault(emptyMap())
     }
 
     private fun applyRoom(o: JsonObject) {
@@ -553,6 +589,18 @@ class ChatStore(
         send(buildJsonObject { put("type", "users"); put("filter", filter) })
     }
     fun loadStats() = send(buildJsonObject { put("type", "stats") }).let { }
+
+    /** Owner only: gives or takes away admin rights. */
+    fun setAdmin(uid: String, on: Boolean) {
+        send(buildJsonObject { put("type", "setadmin"); put("uid", uid); put("on", on) })
+        refreshAdmin()
+    }
+
+    /** Admin journal: only this admin's actions when [mine]. */
+    fun loadLog(mine: Boolean) {
+        _log.value = null
+        send(buildJsonObject { put("type", "log"); put("mine", mine) })
+    }
     private fun refreshAdmin() {
         if (!_me.value.admin) return
         scope.launch { delay(400); loadStats(); if (_users.value != null) loadUsers(lastFilter) }

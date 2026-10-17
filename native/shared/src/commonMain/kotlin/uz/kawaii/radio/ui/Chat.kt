@@ -1,5 +1,7 @@
 package uz.kawaii.radio.ui
 
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -111,7 +113,12 @@ fun Chat(active: Boolean) {
     val room by chat.room.collectAsState()
     val engine by store.engine.collectAsState()
 
-    var draft by remember { mutableStateOf("") }
+    var field by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
+    val draft = field.text
+    val clearDraft = { field = androidx.compose.ui.text.input.TextFieldValue("") }
+    // pinned message: jump to it like Telegram does, loading older pages until it is there
+    var jumpTo by remember { mutableStateOf<Long?>(null) }
+    var flash by remember { mutableStateOf<Long?>(null) }
     var replyTo by remember { mutableStateOf<ChatMsg?>(null) }
     var selectedMsg by remember { mutableStateOf<ChatMsg?>(null) }
     var picker by remember { mutableStateOf(false) }
@@ -130,6 +137,22 @@ fun Chat(active: Boolean) {
     LaunchedEffect(list, hasMore) {
         snapshotFlow { (list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) to list.layoutInfo.totalItemsCount }.collect { (last, total) ->
             if (hasMore && total > 0 && last >= total - 3) chat.loadOlder()
+        }
+    }
+
+    LaunchedEffect(jumpTo, messages) {
+        val id = jumpTo ?: return@LaunchedEffect
+        val i = reversed.indexOfFirst { it.id == id && !it.pending }
+        when {
+            i >= 0 -> {
+                jumpTo = null
+                list.animateScrollToItem(i)
+                flash = id
+                delay(1_600)
+                if (flash == id) flash = null
+            }
+            hasMore -> chat.loadOlder()
+            else -> { jumpTo = null; toast = "Xabar topilmadi" }
         }
     }
 
@@ -153,7 +176,7 @@ fun Chat(active: Boolean) {
         room.pin?.let { pin ->
             Row(
                 Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp).fillMaxWidth().tray(RoundedCornerShape(14.dp))
-                    .tap(onClick = { sound.press(); selectedMsg = pin }).padding(horizontal = 12.dp, vertical = 8.dp),
+                    .tap(onClick = { sound.press(); jumpTo = pin.id }).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -162,6 +185,7 @@ fun Chat(active: Boolean) {
                     BasicText("QADALGAN · ${pin.name}", style = T.micro(10.sp, K.inkSoft), maxLines = 1)
                     BasicText(preview(pin), style = T.pixel(13.sp, K.ink), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
+                if (me.admin) BasicText("×", Modifier.tap(onClick = { sound.press(); chat.pin(null) }).padding(horizontal = 6.dp), style = T.display(16.sp, K.inkSoft))
             }
         }
 
@@ -176,7 +200,7 @@ fun Chat(active: Boolean) {
                 items(reversed, key = { m -> if (m.pending) "p-${m.nonce}" else "m-${m.id}" }) { m ->
                     Bubble(
                         m, mine = m.uid == me.uid,
-                        selected = selectedMsg?.let { it.id == m.id && it.nonce == m.nonce } == true,
+                        selected = selectedMsg?.let { it.id == m.id && it.nonce == m.nonce } == true || (flash == m.id && !m.pending),
                         onOpenMenu = { if (!m.pending || m.uid == me.uid) { sound.press(); focus.clearFocus(); selectedMsg = m } },
                         onReact = { e -> chat.react(m, e) },
                         myUid = me.uid,
@@ -210,7 +234,10 @@ fun Chat(active: Boolean) {
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    for (n in names) Chip("@$n", false) { draft = draft.dropLast(word.length) + "@$n " }
+                    for (n in names) Chip("@$n", false) {
+                        val t = draft.dropLast(word.length) + "@$n "
+                        field = androidx.compose.ui.text.input.TextFieldValue(t, androidx.compose.ui.text.TextRange(t.length))
+                    }
                 }
             }
         }
@@ -249,6 +276,24 @@ fun Chat(active: Boolean) {
                 style = T.pixel(14.sp, K.onAir).copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
             )
         } else {
+            AnimatedVisibility(
+                !field.selection.collapsed,
+                enter = expandVertically(tween(180)) + fadeIn(tween(160)),
+                exit = shrinkVertically(tween(160)) + fadeOut(tween(120)),
+            ) {
+                Row(
+                    Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp).fillMaxWidth().tray(RoundedCornerShape(16.dp)).padding(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    for (f in Fmt.entries) {
+                        Box(
+                            Modifier.weight(1f).height(36.dp).raised(RoundedCornerShape(11.dp))
+                                .tap(onClick = { sound.press(); field = field.toggle(f) }),
+                            contentAlignment = Alignment.Center,
+                        ) { BasicText(formatChat("${f.mark}${f.label}${f.mark}", K.ink, revealed = true), style = T.pixel(14.sp, K.ctlInk)) }
+                    }
+                }
+            }
             // composer: share the song on air, LCD text field, stickers, send
             Row(
                 Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp).fillMaxWidth().tray(RoundedCornerShape(18.dp)).padding(5.dp),
@@ -262,20 +307,25 @@ fun Chat(active: Boolean) {
                 ) {
                     if (draft.isEmpty()) BasicText("XABAR YOZING…", style = T.pixel(15.sp, K.lcdInk.copy(alpha = 0.4f), lh = 18.sp))
                     BasicTextField(
-                        draft, { if (it.length <= 1000) draft = it },
+                        field, { if (it.text.length <= 1000) field = it },
                         Modifier.fillMaxWidth(),
                         enabled = active,
                         maxLines = 4,
                         textStyle = T.pixel(15.sp, K.lcdInk, lh = 18.sp).copy(shadow = lcdShadow()),
                         cursorBrush = SolidColor(K.lcdInk),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank()) { send("text", draft); draft = "" } }),
+                        keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank()) { send("text", draft); clearDraft() } }),
+                        visualTransformation = ChatFormatTransformation(K.lcdInk),
                     )
                 }
-                if (stickers.isNotEmpty()) RoundKey(Glyph.STAR, active = picker) { picker = !picker }
-                RoundKey(Glyph.NEXT, enabled = draft.isNotBlank()) { send("text", draft); draft = "" }
+                if (stickers.isNotEmpty()) RoundKey(Glyph.SMILE, active = picker) { picker = !picker }
+                RoundKey(Glyph.NEXT, enabled = draft.isNotBlank()) { send("text", draft); clearDraft() }
             }
-            if (picker) {
+            AnimatedVisibility(
+                picker,
+                enter = expandVertically(tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing)) + fadeIn(tween(220)),
+                exit = shrinkVertically(tween(220)) + fadeOut(tween(150)),
+            ) { Column {
                 LazyVerticalGrid(
                     GridCells.Fixed(4),
                     Modifier.fillMaxWidth().height(240.dp).padding(horizontal = 12.dp).tray(RoundedCornerShape(18.dp)),
@@ -290,7 +340,7 @@ fun Chat(active: Boolean) {
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-            }
+            } }
         }
     }
 
@@ -308,6 +358,7 @@ fun Chat(active: Boolean) {
         onReact = { m, e -> chat.react(m, e) },
         onPin = { m -> chat.pin(if (room.pin?.id == m.id) null else m) },
         pinned = selectedMsg?.let { s -> room.pin?.id == s.id } == true,
+        canBan = selectedMsg?.let { s -> me.canTouch(s.uid, chat.role(s.uid)) } == true,
     )
 
     UserSheet()
@@ -316,7 +367,7 @@ fun Chat(active: Boolean) {
 private fun preview(m: ChatMsg) = when (m.kind) {
     "sticker" -> "Stiker"
     "track" -> "Qo'shiq"
-    else -> m.body
+    else -> stripFormat(m.body)
 }
 
 @Composable
@@ -345,13 +396,16 @@ private fun Bubble(
         }
         val shape = RoundedCornerShape(16.dp)
         val bare = m.kind == "sticker"
+        // a ||spoiler|| stays hidden until the first tap on the bubble
+        val spoiler = remember(m.body) { m.kind == "text" && hasSpoiler(m.body) }
+        val reveal = remember(m.id, m.nonce) { mutableStateOf(false) }
         Column(
             Modifier.widthIn(max = 276.dp)
                 .then(if (bare) Modifier else if (mine) Modifier.lcd(shape).border(2.dp, if (selected) K.accent else K.lcdBorder, shape) else Modifier.raised(shape, selected))
                 .then(if (mentionsMe && !bare) Modifier.border(2.dp, K.gold, shape) else Modifier)
                 .pointerInput(m.id, m.nonce) {
                     detectTapGestures(
-                        onTap = { onOpenMenu() },
+                        onTap = { if (spoiler && !reveal.value) reveal.value = true else onOpenMenu() },
                         onLongPress = { onOpenMenu() },
                     )
                 }
@@ -374,7 +428,7 @@ private fun Bubble(
                     Column {
                         BasicText(r.name, style = T.pixel(11.sp, ink.copy(alpha = 0.7f), weight = androidx.compose.ui.text.font.FontWeight.SemiBold), maxLines = 1)
                         BasicText(
-                            if (r.kind == "text") r.body else if (r.kind == "sticker") "Stiker" else "Qo'shiq",
+                            if (r.kind == "text") stripFormat(r.body) else if (r.kind == "sticker") "Stiker" else "Qo'shiq",
                             style = T.pixel(12.sp, ink.copy(alpha = 0.8f)),
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -398,7 +452,10 @@ private fun Bubble(
                         }
                     }
                 }
-                else -> BasicText(m.body, style = T.pixel(15.sp, ink, lh = 20.sp).let { if (mine) it.copy(shadow = lcdShadow()) else it })
+                else -> BasicText(
+                    remember(m.body, reveal.value, ink) { formatChat(m.body, ink, reveal.value) },
+                    style = T.pixel(15.sp, ink, lh = 20.sp).let { if (mine) it.copy(shadow = lcdShadow()) else it },
+                )
             }
             BasicText(
                 if (m.pending) "…" else clock(m.ts),
@@ -411,11 +468,14 @@ private fun Bubble(
                         val who = m.reactions[e].orEmpty()
                         if (who.isEmpty()) continue
                         val minePick = myUid in who
-                        BasicText(
-                            "$e ${who.size}",
-                            Modifier.raised(RoundedCornerShape(10.dp), minePick).tap(onClick = { onReact(e) }).padding(horizontal = 7.dp, vertical = 3.dp),
-                            style = T.pixel(12.sp, if (minePick) K.ink else K.inkSoft),
-                        )
+                        Row(
+                            Modifier.raised(RoundedCornerShape(10.dp), minePick).tap(onClick = { onReact(e) }).padding(horizontal = 7.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            uz.kawaii.radio.ui.kit.Reaction.Icon(e, 14.dp)
+                            BasicText("${who.size}", style = T.pixel(12.sp, if (minePick) K.ink else K.inkSoft, lh = 12.sp))
+                        }
                     }
                 }
             }
@@ -481,6 +541,7 @@ private fun MessageActionSheet(
     onReact: (ChatMsg, String) -> Unit,
     onPin: (ChatMsg) -> Unit = {},
     pinned: Boolean = false,
+    canBan: Boolean = false,
 ) {
     val sound = LocalSound.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -540,7 +601,7 @@ private fun MessageActionSheet(
                             Modifier.weight(1f).height(44.dp).raised(RoundedCornerShape(13.dp), picked)
                                 .tap(onClick = { sound.press(); onDismiss(); onReact(m, e) }),
                             contentAlignment = Alignment.Center,
-                        ) { BasicText(e, style = T.pixel(21.sp, K.ink)) }
+                        ) { uz.kawaii.radio.ui.kit.Reaction.Icon(e, 24.dp) }
                     }
                 }
             }
@@ -564,7 +625,7 @@ private fun MessageActionSheet(
                         glyphSize = 14.dp,
                         height = 46.dp,
                     ) {
-                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(m.body))
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(stripFormat(m.body)))
                         onDismiss()
                         onCopied()
                     }
@@ -573,7 +634,7 @@ private fun MessageActionSheet(
 
             if (admin && !m.pending) {
                 PixelKey(
-                    if (pinned) "Qadashni olib tashlash" else "Qadash (hammaga tepada)",
+                    if (pinned) "Qadashni olish" else "Qadash",
                     Modifier.fillMaxWidth(),
                     glyph = Glyph.STAR,
                     glyphSize = 14.dp,
@@ -581,43 +642,22 @@ private fun MessageActionSheet(
                 ) { onDismiss(); onPin(m) }
             }
 
-            // Secondary action keys (Profile, Delete, Ban)
+            // Secondary action keys (Profile, Delete, Ban), all in one style
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!mine) {
-                    PixelKey(
-                        "Profilni ko'rish",
-                        Modifier.weight(1f),
-                        glyph = Glyph.USER,
-                        glyphSize = 14.dp,
-                        height = 46.dp,
-                    ) { onDismiss(); onProfile(m) }
-                }
-                if (mine || admin) {
-                    Box(
-                        Modifier.weight(1f).height(46.dp).raised(RoundedCornerShape(14.dp))
-                            .tap(onClick = { sound.press(); onDismiss(); onDelete(m) }),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Px(Glyph.TRASH, 13.dp, K.onAir)
-                            BasicText("O'chirish", style = T.pixel(14.sp, K.onAir, weight = androidx.compose.ui.text.font.FontWeight.SemiBold))
-                        }
-                    }
-                }
-                if (admin && !mine) {
-                    Box(
-                        Modifier.weight(1f).height(46.dp).raised(RoundedCornerShape(14.dp))
-                            .tap(onClick = { sound.press(); onDismiss(); onBan(m) }),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Px(Glyph.BAN, 13.dp, K.onAir)
-                            BasicText("Bloklash", style = T.pixel(14.sp, K.onAir, weight = androidx.compose.ui.text.font.FontWeight.SemiBold))
-                        }
-                    }
-                }
+                if (!mine) ActionKey("Profil", Glyph.USER, Modifier.weight(1f)) { onDismiss(); onProfile(m) }
+                if (mine || admin) ActionKey("O'chirish", Glyph.TRASH, Modifier.weight(1f), danger = true) { onDismiss(); onDelete(m) }
+                if (canBan && !mine) ActionKey("Bloklash", Glyph.BAN, Modifier.weight(1f), danger = true) { onDismiss(); onBan(m) }
             }
         }
+    }
+}
+
+@Composable
+private fun ActionKey(label: String, glyph: List<String>, modifier: Modifier, danger: Boolean = false, onClick: () -> Unit) {
+    val color = if (danger) K.onAir else K.ctlInk
+    uz.kawaii.radio.ui.kit.Key(RoundedCornerShape(14.dp), modifier.height(46.dp), onPress = onClick) {
+        Px(glyph, 13.dp, color)
+        BasicText(label.uppercase(), style = T.micro(11.sp, color), maxLines = 1)
     }
 }
 
@@ -640,7 +680,7 @@ private fun UserSheet() {
                 style = T.pixel(22.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold),
             )
             Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (shown.admin) Badge("ADMIN", K.gold)
+                if (shown.owner) Badge("BOSH ADMIN", K.gold) else if (shown.admin) Badge("ADMIN", K.gold)
                 when {
                     shown.live -> Badge("● RADIO", K.onAir)
                     shown.online -> Badge("● ONLAYN", K.ledGreen)
@@ -707,14 +747,21 @@ private fun UserSheet() {
                 style = T.pixel(12.sp, K.inkSoft).copy(textAlign = androidx.compose.ui.text.style.TextAlign.Center),
             )
         }
-        if (me.admin && shown.uid != me.uid) {
+        val canTouch = me.canTouch(shown.uid, if (shown.owner) 2 else if (shown.admin) 1 else 0)
+        if (me.owner && shown.uid != me.uid && !shown.owner) {
+            PixelKey(
+                if (shown.admin) "Adminlikdan olish" else "Admin qilish", Modifier.padding(top = 12.dp).fillMaxWidth(),
+                glyph = Glyph.STAR, height = 46.dp,
+            ) { chat.setAdmin(shown.uid, !shown.admin); chat.closeUser() }
+        }
+        if (canTouch) {
             Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (shown.mutedUntil > uz.kawaii.radio.nowMs()) PixelKey("Ovozni yoqish", Modifier.weight(1f), height = 46.dp) { chat.mute(shown.uid, 0); chat.closeUser() }
                 else PixelKey("Ovozsiz 1 soat", Modifier.weight(1f), height = 46.dp) { chat.mute(shown.uid, 60); chat.closeUser() }
                 if (shown.banned) PixelKey("Blokdan chiqarish", Modifier.weight(1f), height = 46.dp) { chat.ban(shown.uid, false); chat.closeUser() }
             }
         }
-        if (me.admin && shown.uid != me.uid && !shown.banned) {
+        if (canTouch && !shown.banned) {
             PixelKey("Bloklash", Modifier.padding(top = 8.dp).fillMaxWidth(), height = 46.dp) { chat.ban(shown.uid, true); chat.closeUser() }
         }
     }
