@@ -87,6 +87,8 @@ interface Msg {
 
 const HISTORY = 60;
 const MAX_TEXT = 1000;
+/** Listeners (not admins) write at most this much in one message: a thought, not an article. */
+const USER_TEXT = 300;
 const RATE_COUNT = 8;      // at most 8 messages
 const RATE_WINDOW = 20_000; // per 20 seconds
 
@@ -329,6 +331,9 @@ export class ChatRoom extends DurableObject<Env> {
         const body = clean(m.body, kind === 'text' ? MAX_TEXT : 200);
         if (!body) return;
         const now = Date.now();
+        if (!a.admin && kind === 'text' && typeof m.body === 'string' && m.body.trim().length > USER_TEXT) {
+          return this.send(ws, { type: 'error', text: `Xabar juda uzun: ${USER_TEXT} belgigacha` });
+        }
         if (!a.admin) {
           if ((a.mutedUntil ?? 0) > now) return this.send(ws, { type: 'error', text: `Siz ${Math.ceil(((a.mutedUntil ?? 0) - now) / 60_000)} daqiqa yoza olmaysiz` });
           const room = await this.room();

@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,13 +94,13 @@ fun AdminSheet(open: Boolean, onClose: () -> Unit) {
     LaunchedEffect(me.admin) { if (open && !me.admin) onClose() }
 
     Sheet(open, onClose, if (me.owner) "Bosh admin" else "Admin panel") {
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Switch3(tab, listOf("BOSHQARUV", "JURNAL")) { tab = it }
-        }
+        Tabs(tab) { tab = it }
         Spacer(Modifier.height(12.dp))
+        // both tabs get the same height, so the sheet doesn't jump when switching
+        Column(Modifier.fillMaxWidth().heightIn(min = 620.dp)) {
         if (tab == 1) {
             Journal(log, mine) { mine = it }
-            return@Sheet
+            return@Column
         }
         // ── room on an LCD
         Box(Modifier.fillMaxWidth().tray(RoundedCornerShape(20.dp)).padding(5.dp)) {
@@ -178,6 +182,32 @@ fun AdminSheet(open: Boolean, onClose: () -> Unit) {
                 shown == null -> Note("Yuklanmoqda…")
                 shown.isEmpty() -> Note(if (who == Who.ONLINE) "Hozir hech kim onlayn emas" else "Hech kim topilmadi")
                 else -> for (u in shown) UserRow(u, me, expanded == u.uid) { expanded = if (expanded == u.uid) null else u.uid }
+            }
+        }
+        }
+    }
+}
+
+/** BOSHQARUV / JURNAL: a full-width hardware slider, labels never wrap. */
+@Composable
+private fun Tabs(tab: Int, onTab: (Int) -> Unit) {
+    val sound = LocalSound.current
+    val labels = listOf("BOSHQARUV", "JURNAL")
+    val pos by androidx.compose.animation.core.animateFloatAsState(tab.toFloat(), uz.kawaii.radio.ui.theme.motionSpring(600f, 34f))
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().tray(RoundedCornerShape(14.dp)).padding(4.dp)) {
+        val cell = maxWidth / labels.size
+        Box(Modifier.matchParentSize()) {
+            Box(
+                Modifier.offset { androidx.compose.ui.unit.IntOffset((cell.toPx() * pos).toInt(), 0) }
+                    .width(cell).fillMaxHeight().raised(RoundedCornerShape(10.dp)),
+            )
+        }
+        Row(Modifier.fillMaxWidth()) {
+            labels.forEachIndexed { i, label ->
+                Box(
+                    Modifier.weight(1f).height(36.dp).tap(onClick = { if (i != tab) { sound.press(); onTab(i) } }),
+                    contentAlignment = Alignment.Center,
+                ) { BasicText(label, style = T.micro(11.sp, if (i == tab) K.ctlInk else K.inkSoft.copy(alpha = 0.7f)), maxLines = 1) }
             }
         }
     }

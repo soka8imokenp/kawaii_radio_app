@@ -1,6 +1,12 @@
 package uz.kawaii.radio.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
@@ -127,4 +133,38 @@ fun TextFieldValue.toggle(f: Fmt): TextFieldValue {
     }
     val nt = t.substring(0, a) + m + sel + m + t.substring(b)
     return copy(text = nt, selection = if (a == b) TextRange(a + m.length) else TextRange(a + m.length, b + m.length))
+}
+
+/** Longest message a listener (not an admin) may send: room for a real thought, not for an article. */
+const val USER_TEXT_MAX = 300
+
+/**
+ * Replaces the system text popup (Translate, Cut…) in the composer: its actions are kept here and
+ * shown as keys in the chat's own format bar.
+ */
+class ComposerToolbar : TextToolbar {
+    var copy by mutableStateOf<(() -> Unit)?>(null); private set
+    var paste by mutableStateOf<(() -> Unit)?>(null); private set
+    var cut by mutableStateOf<(() -> Unit)?>(null); private set
+    var selectAll by mutableStateOf<(() -> Unit)?>(null); private set
+    private var shown by mutableStateOf(false)
+    override val status: TextToolbarStatus get() = if (shown) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
+
+    override fun showMenu(
+        rect: Rect,
+        onCopyRequested: (() -> Unit)?,
+        onPasteRequested: (() -> Unit)?,
+        onCutRequested: (() -> Unit)?,
+        onSelectAllRequested: (() -> Unit)?,
+    ) {
+        copy = onCopyRequested; paste = onPasteRequested; cut = onCutRequested; selectAll = onSelectAllRequested
+        shown = true
+    }
+
+    override fun hide() {
+        shown = false
+        copy = null; paste = null; cut = null; selectAll = null
+    }
+
+    val visible: Boolean get() = shown && (copy != null || paste != null || cut != null || selectAll != null)
 }

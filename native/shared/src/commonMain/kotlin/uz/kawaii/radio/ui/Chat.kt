@@ -1,5 +1,6 @@
 package uz.kawaii.radio.ui
 
+import kotlinx.coroutines.launch
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.AnimatedVisibility
@@ -118,6 +119,9 @@ fun Chat(active: Boolean) {
     val clearDraft = { field = androidx.compose.ui.text.input.TextFieldValue("") }
     // pinned message: jump to it like Telegram does, loading older pages until it is there
     var jumpTo by remember { mutableStateOf<Long?>(null) }
+    val jumpScope = androidx.compose.runtime.rememberCoroutineScope()
+    val toolbar = remember { ComposerToolbar() }
+    val staff by chat.staff.collectAsState()
     var flash by remember { mutableStateOf<Long?>(null) }
     var replyTo by remember { mutableStateOf<ChatMsg?>(null) }
     var selectedMsg by remember { mutableStateOf<ChatMsg?>(null) }
@@ -145,11 +149,15 @@ fun Chat(active: Boolean) {
         val i = reversed.indexOfFirst { it.id == id && !it.pending }
         when {
             i >= 0 -> {
+                jumpScope.launch {
+                    // far away: jump close first, then glide the last bit
+                    if (kotlin.math.abs(list.firstVisibleItemIndex - i) > 25) list.scrollToItem((i - 6).coerceAtLeast(0))
+                    list.animateScrollToItem(i)
+                    flash = id
+                    delay(1_800)
+                    if (flash == id) flash = null
+                }
                 jumpTo = null
-                list.animateScrollToItem(i)
-                flash = id
-                delay(1_600)
-                if (flash == id) flash = null
             }
             hasMore -> chat.loadOlder()
             else -> { jumpTo = null; toast = "Xabar topilmadi" }
@@ -205,6 +213,7 @@ fun Chat(active: Boolean) {
                         onReact = { e -> chat.react(m, e) },
                         myUid = me.uid,
                         mentionsMe = chat.mentionsMe(m),
+                        role = staff[m.uid] ?: 0,
                     )
                 }
                 if (messages.isEmpty() && connected) {
@@ -277,20 +286,37 @@ fun Chat(active: Boolean) {
             )
         } else {
             AnimatedVisibility(
-                !field.selection.collapsed,
+                !field.selection.collapsed || toolbar.visible,
                 enter = expandVertically(tween(180)) + fadeIn(tween(160)),
                 exit = shrinkVertically(tween(160)) + fadeOut(tween(120)),
             ) {
-                Row(
+                Column(
                     Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp).fillMaxWidth().tray(RoundedCornerShape(16.dp)).padding(5.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
+                    val edits = listOfNotNull(
+                        toolbar.copy?.let { "NUSXA" to it },
+                        toolbar.cut?.let { "KESISH" to it },
+                        toolbar.paste?.let { "QO'YISH" to it },
+                        toolbar.selectAll?.let { "HAMMASI" to it },
+                    )
+                    if (edits.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        for ((label, act) in edits) {
+                            Box(
+                                Modifier.weight(1f).height(30.dp).raised(RoundedCornerShape(10.dp))
+                                    .tap(onClick = { sound.press(); act(); toolbar.hide() }),
+                                contentAlignment = Alignment.Center,
+                            ) { BasicText(label, style = T.micro(10.sp)) }
+                        }
+                    }
+                    if (!field.selection.collapsed) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     for (f in Fmt.entries) {
                         Box(
                             Modifier.weight(1f).height(36.dp).raised(RoundedCornerShape(11.dp))
                                 .tap(onClick = { sound.press(); field = field.toggle(f) }),
                             contentAlignment = Alignment.Center,
                         ) { BasicText(formatChat("${f.mark}${f.label}${f.mark}", K.ink, revealed = true), style = T.pixel(14.sp, K.ctlInk)) }
+                    }
                     }
                 }
             }
@@ -306,8 +332,10 @@ fun Chat(active: Boolean) {
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                 ) {
                     if (draft.isEmpty()) BasicText("XABAR YOZING…", style = T.pixel(15.sp, K.lcdInk.copy(alpha = 0.4f), lh = 18.sp))
+                    val maxLen = if (me.admin) 1000 else USER_TEXT_MAX
+                    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalTextToolbar provides toolbar) {
                     BasicTextField(
-                        field, { if (it.text.length <= 1000) field = it },
+                        field, { field = if (it.text.length <= maxLen) it else it.copy(text = it.text.take(maxLen), selection = androidx.compose.ui.text.TextRange(minOf(it.selection.start, maxLen), minOf(it.selection.end, maxLen))) },
                         Modifier.fillMaxWidth(),
                         enabled = active,
                         maxLines = 4,
@@ -317,6 +345,13 @@ fun Chat(active: Boolean) {
                         keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank()) { send("text", draft); clearDraft() } }),
                         visualTransformation = ChatFormatTransformation(K.lcdInk),
                     )
+                    }
+                    if (!me.admin && draft.length > USER_TEXT_MAX - 60) {
+                        BasicText(
+                            "${draft.length}/$USER_TEXT_MAX", Modifier.align(Alignment.BottomEnd),
+                            style = T.pixel(10.sp, if (draft.length >= USER_TEXT_MAX) K.onAir else K.lcdInk.copy(alpha = 0.55f), lh = 10.sp),
+                        )
+                    }
                 }
                 if (stickers.isNotEmpty()) RoundKey(Glyph.SMILE, active = picker) { picker = !picker }
                 RoundKey(Glyph.NEXT, enabled = draft.isNotBlank()) { send("text", draft); clearDraft() }
@@ -382,7 +417,7 @@ private fun RoundKey(glyph: List<String>, enabled: Boolean = true, active: Boole
 private fun Bubble(
     m: ChatMsg, mine: Boolean, selected: Boolean,
     onOpenMenu: () -> Unit,
-    onReact: (String) -> Unit, myUid: String, mentionsMe: Boolean,
+    onReact: (String) -> Unit, myUid: String, mentionsMe: Boolean, role: Int = 0,
 ) {
     val store = LocalStore.current
     Row(
@@ -412,10 +447,18 @@ private fun Bubble(
                 .padding(horizontal = if (bare) 0.dp else 12.dp, vertical = if (bare) 0.dp else 8.dp),
         ) {
             val ink = if (mine) K.lcdInk else K.ink
-            if (!mine) BasicText(
-                m.name, Modifier.tap(onClick = { store.chat.whois(m.uid) }),
-                style = T.pixel(12.sp, K.inkSoft, weight = androidx.compose.ui.text.font.FontWeight.SemiBold),
-            )
+            if (!mine) Row(
+                Modifier.tap(onClick = { store.chat.whois(m.uid) }),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                BasicText(
+                    m.name,
+                    style = T.pixel(12.sp, if (role > 0) K.gold else K.inkSoft, weight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+                )
+                // admins carry the Kawaii logo, so nobody can pass for one
+                if (role > 0) uz.kawaii.radio.ui.kit.Logo(K.gold, Modifier.size(13.dp))
+            }
             m.reply?.let { r ->
                 Row(
                     Modifier.padding(top = 4.dp, bottom = 4.dp)
@@ -680,7 +723,7 @@ private fun UserSheet() {
                 style = T.pixel(22.sp, K.ink, weight = androidx.compose.ui.text.font.FontWeight.SemiBold),
             )
             Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (shown.owner) Badge("BOSH ADMIN", K.gold) else if (shown.admin) Badge("ADMIN", K.gold)
+                if (shown.admin) AdminBadge(if (shown.owner) "BOSH ADMIN" else "ADMIN")
                 when {
                     shown.live -> Badge("● RADIO", K.onAir)
                     shown.online -> Badge("● ONLAYN", K.ledGreen)
@@ -780,5 +823,18 @@ private fun LcdStat(modifier: Modifier, value: String, label: String) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         BasicText(value, style = T.pixel(24.sp, K.lcdInk, lh = 24.sp).copy(shadow = lcdShadow()))
         BasicText(label, Modifier.padding(top = 4.dp), style = T.pixel(11.sp, K.lcdInk.copy(alpha = 0.6f)))
+    }
+}
+
+/** "ADMIN" plate with the Kawaii logo on somebody's profile page. */
+@Composable
+private fun AdminBadge(text: String) {
+    Row(
+        Modifier.raised(RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        uz.kawaii.radio.ui.kit.Logo(K.gold, Modifier.size(14.dp))
+        BasicText(text, style = T.pixel(11.sp, K.gold, weight = androidx.compose.ui.text.font.FontWeight.SemiBold))
     }
 }
